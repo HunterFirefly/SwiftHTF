@@ -1,0 +1,80 @@
+import XCTest
+@testable import SwiftHTF
+
+final class TestPlanBuilderTests: XCTestCase {
+    func testSinglePhase() {
+        let plan = TestPlan(name: "x") {
+            Phase(name: "a") { _ in .continue }
+        }
+        XCTAssertEqual(plan.phases.count, 1)
+        XCTAssertEqual(plan.phases[0].definition.name, "a")
+    }
+
+    func testMultiplePhases() {
+        let plan = TestPlan(name: "x") {
+            Phase(name: "a") { _ in .continue }
+            Phase(name: "b") { _ in .continue }
+            Phase(name: "c") { _ in .continue }
+        }
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["a", "b", "c"])
+    }
+
+    func testOptionalPhase() {
+        let include = false
+        let plan = TestPlan(name: "x") {
+            Phase(name: "a") { _ in .continue }
+            if include {
+                Phase(name: "b") { _ in .continue }
+            }
+            Phase(name: "c") { _ in .continue }
+        }
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["a", "c"])
+    }
+
+    func testEitherPhase() {
+        let useFast = true
+        let plan = TestPlan(name: "x") {
+            if useFast {
+                Phase(name: "fast") { _ in .continue }
+            } else {
+                Phase(name: "slow") { _ in .continue }
+            }
+        }
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["fast"])
+    }
+
+    func testForLoop() {
+        let names = ["a", "b", "c"]
+        let plan = TestPlan(name: "x") {
+            for name in names {
+                Phase(name: name) { _ in .continue }
+            }
+        }
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, names)
+    }
+
+    func testArrayExpression() {
+        let extras: [Phase] = [
+            Phase(name: "x") { _ in .continue },
+            Phase(name: "y") { _ in .continue }
+        ]
+        let plan = TestPlan(name: "p") {
+            Phase(name: "a") { _ in .continue }
+            extras
+        }
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["a", "x", "y"])
+    }
+
+    func testSetupTeardown() {
+        let plan = TestPlan(
+            name: "p",
+            setup: [Phase(name: "init") { _ in .continue }],
+            teardown: [Phase(name: "cleanup") { _ in .continue }]
+        ) {
+            Phase(name: "main") { _ in .continue }
+        }
+        XCTAssertEqual(plan.setup?.map { $0.definition.name }, ["init"])
+        XCTAssertEqual(plan.teardown?.map { $0.definition.name }, ["cleanup"])
+        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["main"])
+    }
+}
