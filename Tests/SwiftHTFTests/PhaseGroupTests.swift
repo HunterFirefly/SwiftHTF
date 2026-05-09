@@ -138,9 +138,9 @@ final class PhaseGroupTests: XCTestCase {
         XCTAssertEqual(record.outcome, .pass)
     }
 
-    // MARK: - DSL 投影
+    // MARK: - DSL 节点结构
 
-    func testTestPlanPhasesProjectionExposesTopLevelPhasesOnly() {
+    func testTestPlanNodesContainGroups() {
         let plan = TestPlan(name: "proj") {
             Phase(name: "top1") { _ in .continue }
             Group("g") {
@@ -148,11 +148,10 @@ final class PhaseGroupTests: XCTestCase {
             }
             Phase(name: "top2") { _ in .continue }
         }
-        // 旧 API：phases 只看顶层 .phase
-        XCTAssertEqual(plan.phases.map { $0.definition.name }, ["top1", "top2"])
-        // 新 API：nodes 完整
         XCTAssertEqual(plan.nodes.count, 3)
+        XCTAssertEqual(plan.nodes[0].asPhase?.definition.name, "top1")
         XCTAssertNotNil(plan.nodes[1].asGroup)
         XCTAssertEqual(plan.nodes[1].asGroup?.children.count, 1)
+        XCTAssertEqual(plan.nodes[2].asPhase?.definition.name, "top2")
     }
 }

@@ -119,7 +119,8 @@ public actor TestExecutor {
         return session
     }
 
-    /// 便利：单 session 同步执行（向后兼容旧 API）
+    /// 单 DUT 便利入口：派生 session、等待 record，一次性返回。
+    /// 多 DUT 并发请改用 `startSession(serialNumber:)`。
     public func execute(serialNumber: String? = nil) async -> TestRecord {
         let session = await startSession(serialNumber: serialNumber)
         return await session.record()
@@ -171,18 +172,6 @@ public struct TestPlan: Sendable {
     public let teardownNodes: [PhaseNode]
     public let continueOnFail: Bool
 
-    /// 旧 API 投影：仅返回顶层 `.phase` 节点。含嵌套 Group 时对其内部不可见。
-    public var phases: [Phase] { nodes.compactMap { $0.asPhase } }
-    /// 旧 API 投影：仅返回顶层 setup 中的 `.phase` 节点；空时返回 nil（与旧语义一致）。
-    public var setup: [Phase]? {
-        let phases = setupNodes.compactMap { $0.asPhase }
-        return phases.isEmpty ? nil : phases
-    }
-    public var teardown: [Phase]? {
-        let phases = teardownNodes.compactMap { $0.asPhase }
-        return phases.isEmpty ? nil : phases
-    }
-
     /// 主初始化：直接用 PhaseNode 构造（含嵌套 Group）
     public init(
         name: String,
@@ -196,23 +185,6 @@ public struct TestPlan: Sendable {
         self.setupNodes = setupNodes
         self.teardownNodes = teardownNodes
         self.continueOnFail = continueOnFail
-    }
-
-    /// 旧 init 兼容（接受 `[Phase]`，自动包装为 `.phase` 节点）
-    public init(
-        name: String,
-        phases: [Phase],
-        setup: [Phase]? = nil,
-        teardown: [Phase]? = nil,
-        continueOnFail: Bool = false
-    ) {
-        self.init(
-            name: name,
-            nodes: phases.map { .phase($0) },
-            setupNodes: (setup ?? []).map { .phase($0) },
-            teardownNodes: (teardown ?? []).map { .phase($0) },
-            continueOnFail: continueOnFail
-        )
     }
 }
 

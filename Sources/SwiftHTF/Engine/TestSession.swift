@@ -128,7 +128,7 @@ public actor TestSession {
             TestContext(serialNumber: serial, resolvedPlugs: resolvedPlugs, config: cfg)
         }
 
-        // 顶层 setup（旧 API 兼容）
+        // 顶层 setup（plan.setupNodes）
         var earlyExit = false
         if !plan.setupNodes.isEmpty {
             let outcome = await runNodes(
