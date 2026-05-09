@@ -142,7 +142,9 @@ public final class PhaseExecutor {
             collected[name] = updated
         }
         r.measurements = collected
+        r.attachments = context.attachments
         context.measurements = [:]
+        context.attachments = []
 
         // 仅当 phase 当前还是 pass 时升级为 fail（不要覆盖已存在的 .skip/.error/.fail）
         if anyMeasurementFailed && r.outcome == .pass {

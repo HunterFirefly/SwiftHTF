@@ -138,6 +138,9 @@ private struct PhaseRow: View {
             ForEach(phase.measurements.sorted(by: { $0.key < $1.key }), id: \.key) { entry in
                 MeasurementRow(name: entry.key, measurement: entry.value)
             }
+            ForEach(Array(phase.attachments.enumerated()), id: \.offset) { (_, a) in
+                AttachmentRow(attachment: a)
+            }
         }
         .padding(8)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -159,6 +162,29 @@ private struct PhaseRow: View {
         case .fail, .error: return .red
         case .skip: return .gray
         }
+    }
+}
+
+private struct AttachmentRow: View {
+    let attachment: Attachment
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text("📎").font(.caption)
+            Text(attachment.name).font(.caption.bold())
+            Text(attachment.mimeType).foregroundColor(.secondary).font(.caption)
+            Text(formatBytes(attachment.size))
+                .foregroundColor(.secondary).font(.caption)
+            Spacer()
+        }
+        .padding(.leading, 16)
+    }
+
+    private func formatBytes(_ n: Int) -> String {
+        if n < 1024 { return "\(n) B" }
+        let kb = Double(n) / 1024
+        if kb < 1024 { return String(format: "%.1f KB", kb) }
+        return String(format: "%.2f MB", kb / 1024)
     }
 }
 

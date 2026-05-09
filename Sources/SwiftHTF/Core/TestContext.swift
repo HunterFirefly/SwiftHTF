@@ -20,6 +20,9 @@ public final class TestContext {
     /// 当前 phase 收集的类型化测量值（每次 phase 开始时由 PhaseExecutor 重置）
     public internal(set) var measurements: [String: Measurement] = [:]
 
+    /// 当前 phase 收集的二进制附件（按写入顺序，每次 phase 开始时由 PhaseExecutor 重置）
+    public internal(set) var attachments: [Attachment] = []
+
     /// 已解析的 Plug 实例字典（按类型名索引）
     private let resolvedPlugs: [String: any PlugProtocol]
 
@@ -63,6 +66,33 @@ public final class TestContext {
             value: codedValue,
             unit: unit
         )
+    }
+
+    // MARK: - 附件
+
+    /// 写入一条二进制附件
+    /// - Parameters:
+    ///   - name: 名称（在 phase 内通常唯一，但允许重复）
+    ///   - data: 二进制内容
+    ///   - mimeType: MIME 类型（如 "image/png"、"text/plain"）
+    public func attach(_ name: String, data: Data, mimeType: String) {
+        attachments.append(Attachment(name: name, mimeType: mimeType, data: data))
+    }
+
+    /// 从文件读入并写入附件
+    /// - Parameters:
+    ///   - url: 源文件 URL
+    ///   - name: 附件名（默认用文件名）
+    ///   - mimeType: 显式 MIME；为 nil 时按扩展名推断
+    public func attachFromFile(
+        _ url: URL,
+        name: String? = nil,
+        mimeType: String? = nil
+    ) throws {
+        let data = try Data(contentsOf: url)
+        let resolvedName = name ?? url.lastPathComponent
+        let resolvedMime = mimeType ?? Attachment.mimeType(forPathExtension: url.pathExtension)
+        attachments.append(Attachment(name: resolvedName, mimeType: resolvedMime, data: data))
     }
 
     // MARK: - Plug

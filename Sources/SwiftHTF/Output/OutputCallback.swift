@@ -10,6 +10,13 @@ public protocol OutputCallback: Sendable {
 
 // MARK: - 控制台输出
 
+private func formatBytes(_ n: Int) -> String {
+    if n < 1024 { return "\(n) B" }
+    let kb = Double(n) / 1024
+    if kb < 1024 { return String(format: "%.1f KB", kb) }
+    return String(format: "%.2f MB", kb / 1024)
+}
+
 /// 控制台输出回调
 public struct ConsoleOutput: OutputCallback {
     public init() {}
@@ -34,6 +41,9 @@ public struct ConsoleOutput: OutputCallback {
                     line += "  [\(m.validatorMessages.joined(separator: "; "))]"
                 }
                 lines.append(line)
+            }
+            for a in phase.attachments {
+                lines.append("      📎 \(a.name) (\(a.mimeType), \(formatBytes(a.size)))")
             }
         }
         lines.append("===================")
@@ -98,13 +108,14 @@ public struct CSVOutput: OutputCallback {
                 at: directory,
                 withIntermediateDirectories: true
             )
-            var lines: [String] = ["name,outcome,value,duration_s,error"]
+            var lines: [String] = ["name,outcome,value,duration_s,attachments_count,error"]
             for p in record.phases {
                 lines.append([
                     Self.escape(p.name),
                     p.outcome.rawValue,
                     Self.escape(p.value ?? ""),
                     String(format: "%.3f", p.duration),
+                    String(p.attachments.count),
                     Self.escape(p.errorMessage ?? "")
                 ].joined(separator: ","))
             }

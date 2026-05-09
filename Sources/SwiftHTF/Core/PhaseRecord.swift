@@ -17,6 +17,7 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
     public var outcome: PhaseOutcomeType
     public var value: String?
     public var measurements: [String: Measurement]
+    public var attachments: [Attachment]
     public var errorMessage: String?
 
     public init(name: String) {
@@ -27,6 +28,7 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
         self.outcome = .pass
         self.value = nil
         self.measurements = [:]
+        self.attachments = []
         self.errorMessage = nil
     }
 

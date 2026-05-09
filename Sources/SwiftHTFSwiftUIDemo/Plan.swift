@@ -68,5 +68,15 @@ func makeDemoPlan() -> TestPlan {
             ctx.measure("mode_index", idx)
             return .continue
         }
+
+        Phase(name: "DiagnosticSnapshot") { @MainActor ctx in
+            let log = """
+            [diag] vcc=3.30V ok
+            [diag] current=120mA ok
+            [diag] temp=42.1C ok
+            """
+            ctx.attach("diag.log", data: Data(log.utf8), mimeType: "text/plain")
+            return .continue
+        }
     }
 }

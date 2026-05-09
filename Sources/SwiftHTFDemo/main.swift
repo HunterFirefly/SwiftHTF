@@ -81,6 +81,17 @@ func makePlan() -> TestPlan {
         Phase(name: "FlakyTest", retryCount: 3) { @MainActor _ in
             return Bool.random() ? .continue : .retry
         }
+
+        Phase(name: "DiagnosticSnapshot") { @MainActor ctx in
+            // 模拟一段诊断日志附件
+            let log = """
+            [diag] vcc=3.30V ok
+            [diag] current=120mA ok
+            [diag] temp=42.1C ok
+            """
+            ctx.attach("diag.log", data: Data(log.utf8), mimeType: "text/plain")
+            return .continue
+        }
     }
 }
 
