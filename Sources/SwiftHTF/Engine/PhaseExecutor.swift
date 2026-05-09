@@ -2,9 +2,14 @@ import Foundation
 
 /// 阶段执行器
 ///
-/// 负责单个 Phase 的运行：超时包装、重试循环、验证测量值。返回 PhaseRecord 由 TestExecutor 收集。
+/// 负责单个 Phase 的运行：超时包装、retry / measurement-repeat 双计数器循环、
+/// harvest 单点 measurement 与多维 series（按 spec 跑 validator 写回三态 outcome），
+/// 收集 attachments / phaseLogs，并在终态 fail/.error 时跑 diagnosers。
+/// 返回的 `PhaseRecord` 由 `TestSession` 串入 `TestRecord.phases`。
 @MainActor
 public final class PhaseExecutor {
+    /// 把 phase 内 `ctx.log(...)` 与执行流追踪日志转成纯文本广播给上层（session 事件流）。
+    /// 返回前缀已格式化为 `[LEVEL] message`。
     public typealias LogEmitter = @Sendable (String) -> Void
 
     private let context: TestContext

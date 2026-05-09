@@ -1,9 +1,10 @@
 import Foundation
 
-/// 测量结果
+/// 单点测量结果
 ///
-/// 替代 Phase 1 的 `MeasurementValue`。新增 `outcome` 与 `validatorMessages` 字段，
-/// 让测量自带 pass/fail 状态与失败原因，可直接被 OutputCallback 序列化。
+/// 由 `ctx.measure(name:_:unit:)` 写入；harvest 阶段按 phase 上的
+/// `MeasurementSpec` 跑 validator 后写回 `outcome` / `validatorMessages`。
+/// 多维序列测量（IV 曲线、扫频等）改用 `SeriesMeasurement`。
 public struct Measurement: Sendable, Codable {
     public let name: String
     public var value: AnyCodableValue

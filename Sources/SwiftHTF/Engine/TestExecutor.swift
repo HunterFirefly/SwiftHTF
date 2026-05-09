@@ -8,12 +8,14 @@ public enum TestEvent: Sendable {
     case testCompleted(TestRecord)
 }
 
-/// 测试执行器：plan / config / plug 注册的容器，能派生多个并发 `TestSession`。
+/// 测试执行器：plan / config / plug 注册（含 bind / swap 替身）的容器，能派生多个并发 `TestSession`。
 ///
 /// 单 DUT 用法（最常见）：直接 `executor.execute(serialNumber:)` 跑一轮。
 /// 多 DUT 并发：`executor.startSession(serialNumber:)` 拿到独立 session，可同时跑多个。
 ///
-/// 每个 session 持有自己的 plug 实例（factory 重新构造、独立 setup/tearDown），互不干扰。
+/// 每个 session 持有自己的 plug 实例（factory 重新构造、独立 setup/tearDown），互不干扰；
+/// 在 executor 上挂的 `bind` / `swap` 别名会随 register 一起灌入每个 session 的 PlugManager，
+/// 适合「生产真实 / 测试 mock」类场景而不需改 phase 代码。
 /// `events()` 是聚合流：所有 session 的事件汇到这里，方便单 session 简单消费；要区分
 /// 多 session 时改订阅 `session.events()`。
 public actor TestExecutor {
@@ -21,7 +23,8 @@ public actor TestExecutor {
     private let outputCallbacks: [OutputCallback]
     private let config: TestConfig
 
-    /// 把"register T 类型"打包成可灌入新 PlugManager 的闭包，保留泛型类型信息。
+    /// 把每次 `register` / `bind` / `swap` 调用打包成"灌入新 PlugManager"的闭包，保留泛型类型信息。
+    /// 派生 session 时按顺序回放，确保每个 session 拿到一份独立但配置一致的 PlugManager。
     private var registrationFns: [@Sendable (PlugManager) async -> Void] = []
     private var activeSessions: [UUID: TestSession] = [:]
     private var continuations: [UUID: AsyncStream<TestEvent>.Continuation] = [:]
