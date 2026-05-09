@@ -108,38 +108,14 @@ public final class PhaseExecutor {
 
                 switch result {
                 case .continue:
-                    if let value = context.getValue(phase.definition.name) {
-                        let validation = validateValue(value, phase: phase)
-                        switch validation {
-                        case .pass:
-                            phaseRecord.endTime = Date()
-                            phaseRecord.outcome = .pass
-                            phaseRecord.value = value
-                            log("[\(phase.definition.name)] ---> \(value)")
-                            return harvest(phaseRecord, phase: phase)
-                        case .fail(let message):
-                            if attempts < maxAttempts {
-                                log("[\(phase.definition.name)] ---> Retry \(attempts): \(message)")
-                                continue
-                            }
-                            phaseRecord.endTime = Date()
-                            phaseRecord.outcome = .fail
-                            phaseRecord.value = value
-                            phaseRecord.errorMessage = message
-                            log("[\(phase.definition.name)] ---> FAIL: \(message)")
-                            return harvest(phaseRecord, phase: phase)
-                        }
-                    } else {
-                        phaseRecord.endTime = Date()
-                        phaseRecord.outcome = .pass
-                        log("[\(phase.definition.name)] ---> Continue")
-                        return harvest(phaseRecord, phase: phase)
-                    }
+                    phaseRecord.endTime = Date()
+                    phaseRecord.outcome = .pass
+                    log("[\(phase.definition.name)] ---> Continue")
+                    return harvest(phaseRecord, phase: phase)
 
                 case .failAndContinue:
                     phaseRecord.endTime = Date()
                     phaseRecord.outcome = .fail
-                    phaseRecord.value = context.getValue(phase.definition.name)
                     log("[\(phase.definition.name)] ---> FAIL (continue)")
                     return harvest(phaseRecord, phase: phase)
 
@@ -310,26 +286,6 @@ public final class PhaseExecutor {
             group.cancelAll()
             return result
         }
-    }
-
-    private func validateValue(_ value: String, phase: Phase) -> ValidationResult {
-        for validator in phase.validators {
-            let result = validator.validate(value)
-            if case .fail = result {
-                return result
-            }
-        }
-
-        if phase.lowerLimit != nil || phase.upperLimit != nil {
-            let validator = RangeValidator(
-                lower: phase.lowerLimit.flatMap { RangeValidator.parseNumber($0) },
-                upper: phase.upperLimit.flatMap { RangeValidator.parseNumber($0) },
-                unit: phase.unit
-            )
-            return validator.validate(value)
-        }
-
-        return .pass
     }
 
     private func log(_ message: String) {

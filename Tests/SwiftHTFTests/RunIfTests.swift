@@ -48,17 +48,19 @@ final class RunIfTests: XCTestCase {
         XCTAssertEqual(record.phases.first?.outcome, .skip)
     }
 
-    func testPhaseRunIfReadsPriorMeasurement() async {
-        // 第一个 phase 写一个 measurement；第二个 phase 的 runIf 读 record 不行（已 harvest）
-        // 所以这里改为读 ctx.testValues（旧 string 路径，跨 phase 不会清空）
+    func testPhaseRunIfReadsPriorPhaseDecision() async {
+        // 跨 phase 的决定通过外部 actor 传递（ctx.measurements 在 harvest 后清空，
+        // 不能跨 phase 读取；要持久化跨 phase 数据，用 actor / plug / config）
+        actor Mode { var value: String?; func set(_ v: String) { value = v }; func get() -> String? { value } }
+        let mode = Mode()
         let plan = TestPlan(name: "from_prior") {
-            Phase(name: "decide") { @MainActor ctx in
-                ctx.setValue("mode", "fast")
+            Phase(name: "decide") { @MainActor _ in
+                await mode.set("fast")
                 return .continue
             }
             Phase(
                 name: "extra",
-                runIf: { @MainActor ctx in ctx.getValue("mode") == "full" }
+                runIf: { @MainActor _ in await mode.get() == "full" }
             ) { _ in
                 XCTFail("mode != full 不应执行")
                 return .continue
@@ -134,15 +136,17 @@ final class RunIfTests: XCTestCase {
     }
 
     func testGroupRunIfSeesParentScope() async {
-        // group runIf 应能看到上一个 phase 在 ctx 上写的数据
+        // group runIf 闭包通过捕获外部 actor 读到上一个 phase 的决定
+        actor Mode { var value: String?; func set(_ v: String) { value = v }; func get() -> String? { value } }
+        let mode = Mode()
         let plan = TestPlan(name: "group_predicate") {
-            Phase(name: "decide") { @MainActor ctx in
-                ctx.setValue("mode", "fast")
+            Phase(name: "decide") { @MainActor _ in
+                await mode.set("fast")
                 return .continue
             }
             Group(
                 "extras",
-                runIf: { @MainActor ctx in ctx.getValue("mode") == "full" }
+                runIf: { @MainActor _ in await mode.get() == "full" }
             ) {
                 Phase(name: "long_test") { _ in
                     XCTFail("mode=fast 时 group 应跳过")

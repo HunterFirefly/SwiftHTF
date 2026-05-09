@@ -40,9 +40,8 @@ public struct ConsoleOutput: OutputCallback {
         lines.append("Phases:")
         for phase in record.phases {
             let mark = phaseSymbol(phase.outcome)
-            let value = phase.value ?? "N/A"
             let prefix = phase.groupPath.isEmpty ? "" : "[" + phase.groupPath.joined(separator: " / ") + "] "
-            lines.append("  \(mark) \(prefix)\(phase.name): \(value) (\(String(format: "%.2f", phase.duration))s)")
+            lines.append("  \(mark) \(prefix)\(phase.name) (\(String(format: "%.2f", phase.duration))s)")
             for (name, m) in phase.measurements.sorted(by: { $0.key < $1.key }) {
                 let mmark = phaseSymbol(m.outcome)
                 let unit = m.unit.map { " \($0)" } ?? ""
@@ -121,13 +120,14 @@ public struct CSVOutput: OutputCallback {
                 at: directory,
                 withIntermediateDirectories: true
             )
-            var lines: [String] = ["name,outcome,value,duration_s,attachments_count,diagnoses_count,error"]
+            var lines: [String] = ["name,outcome,duration_s,measurements_count,traces_count,attachments_count,diagnoses_count,error"]
             for p in record.phases {
                 lines.append([
                     Self.escape(p.name),
                     p.outcome.rawValue,
-                    Self.escape(p.value ?? ""),
                     String(format: "%.3f", p.duration),
+                    String(p.measurements.count),
+                    String(p.traces.count),
                     String(p.attachments.count),
                     String(p.diagnoses.count),
                     Self.escape(p.errorMessage ?? "")

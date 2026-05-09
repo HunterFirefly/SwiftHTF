@@ -4,8 +4,8 @@ import Foundation
 
 /// 作用在 `AnyCodableValue` 上的 measurement 验证器。
 ///
-/// 与旧的字符串 `Validator` 协议并存：旧协议仍服务 `phase.value`（来自 `ctx.setValue`）；
-/// 本协议服务 `ctx.measure(...)` 写入的类型化测量值。
+/// 由 `MeasurementSpec` 链式 builder 装配，phase harvest 阶段对 `ctx.measure(...)`
+/// 写入的同名 measurement 跑全套校验，聚合为 pass / marginal / fail 三态。
 public protocol MeasurementValidator: Sendable {
     /// 校验单个值
     func validate(_ value: AnyCodableValue) -> MeasurementValidationResult

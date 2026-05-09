@@ -148,32 +148,6 @@ final class MeasurementValidatorTests: XCTestCase {
         XCTAssertEqual(ms?["count"]?.outcome, .pass)
     }
 
-    func testMeasurementValidationCoexistsWithLegacyStringValidator() async {
-        // 旧路径：phase.value 走 lowerLimit/upperLimit
-        // 新路径：ctx.measure 走 spec
-        let plan = TestPlan(name: "coexist") {
-            Phase(
-                name: "vcc",
-                lowerLimit: "3.0",
-                upperLimit: "3.6",
-                unit: "V",
-                measurements: [
-                    .named("rail", unit: "V").inRange(0.0, 1.5)
-                ]
-            ) { @MainActor ctx in
-                ctx.setValue("vcc", "3.3")        // 旧路径 -> pass
-                ctx.measure("rail", 0.9, unit: "V") // 新路径 -> pass
-                return .continue
-            }
-        }
-        let executor = TestExecutor(plan: plan)
-        let record = await executor.execute()
-        XCTAssertEqual(record.outcome, .pass)
-        let phase = record.phases.first
-        XCTAssertEqual(phase?.value, "3.3")
-        XCTAssertEqual(phase?.measurements["rail"]?.outcome, .pass)
-    }
-
     func testFailAndContinueDoesNotGetUpgradedAgain() async {
         // 已经是 .fail 的 phase（来自 .failAndContinue）即便 measurement 也失败也不会出错
         let plan = TestPlan(name: "double_fail", continueOnFail: true) {

@@ -223,7 +223,7 @@ final class TestExecutorTests: XCTestCase {
     func testRecordEncodesToJSON() async throws {
         let plan = TestPlan(name: "json") {
             Phase(name: "x") { @MainActor ctx in
-                ctx.setValue("x", "42")
+                ctx.measure("x", 42)
                 return .continue
             }
         }

@@ -17,7 +17,6 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
     public let startTime: Date
     public var endTime: Date?
     public var outcome: PhaseOutcomeType
-    public var value: String?
     public var measurements: [String: Measurement]
     /// 多维 measurement 结果（IV 曲线、扫频、扫温等）。与 `measurements` 平行存放。
     public var traces: [String: SeriesMeasurement]
@@ -36,7 +35,6 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
         self.startTime = Date()
         self.endTime = nil
         self.outcome = .pass
-        self.value = nil
         self.measurements = [:]
         self.traces = [:]
         self.attachments = []

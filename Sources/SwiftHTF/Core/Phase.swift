@@ -7,7 +7,7 @@ public struct PhaseDefinition: Identifiable, Sendable {
     public let timeout: TimeInterval?
     public let retryCount: Int
     public let execute: @Sendable @MainActor (TestContext) async throws -> PhaseResult
-    
+
     /// 初始化
     /// - Parameters:
     ///   - name: 阶段名称
@@ -35,12 +35,7 @@ public typealias RunIfPredicate = @Sendable @MainActor (TestContext) async -> Bo
 public struct Phase: Identifiable, Sendable {
     public let id: UUID = UUID()
     public let definition: PhaseDefinition
-    public let validators: [Validator]
-    public let lowerLimit: String?
-    public let upperLimit: String?
-    public let unit: String?
-    /// 声明式 measurement 规约。仅对通过 `ctx.measure(name, ...)` 写入的同名测量生效，
-    /// 不影响旧的 `phase.value` 字符串验证路径（仍由 `lowerLimit/upperLimit` + `validators` 控制）。
+    /// 声明式 measurement 规约。仅对通过 `ctx.measure(name, ...)` 写入的同名测量生效。
     public let measurements: [MeasurementSpec]
     /// 声明式多维 measurement（series / trace）规约。仅对通过
     /// `ctx.recordSeries(name) { ... }` 写入的同名 trace 生效。
@@ -59,10 +54,6 @@ public struct Phase: Identifiable, Sendable {
     /// 初始化
     public init(
         definition: PhaseDefinition,
-        validators: [Validator] = [],
-        lowerLimit: String? = nil,
-        upperLimit: String? = nil,
-        unit: String? = nil,
         measurements: [MeasurementSpec] = [],
         series: [SeriesMeasurementSpec] = [],
         runIf: RunIfPredicate? = nil,
@@ -71,10 +62,6 @@ public struct Phase: Identifiable, Sendable {
         failureExceptions: [any Error.Type] = []
     ) {
         self.definition = definition
-        self.validators = validators
-        self.lowerLimit = lowerLimit
-        self.upperLimit = upperLimit
-        self.unit = unit
         self.measurements = measurements
         self.series = series
         self.runIf = runIf
@@ -88,9 +75,6 @@ public struct Phase: Identifiable, Sendable {
         name: String,
         timeout: TimeInterval? = nil,
         retryCount: Int = 0,
-        lowerLimit: String? = nil,
-        upperLimit: String? = nil,
-        unit: String? = nil,
         measurements: [MeasurementSpec] = [],
         series: [SeriesMeasurementSpec] = [],
         runIf: RunIfPredicate? = nil,
@@ -105,10 +89,6 @@ public struct Phase: Identifiable, Sendable {
             retryCount: retryCount,
             execute: execute
         )
-        self.validators = []
-        self.lowerLimit = lowerLimit
-        self.upperLimit = upperLimit
-        self.unit = unit
         self.measurements = measurements
         self.series = series
         self.runIf = runIf
