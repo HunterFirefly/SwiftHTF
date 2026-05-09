@@ -30,6 +30,13 @@ public final class TestContext {
     /// 当前 phase 收集的二进制附件（按写入顺序，每次 phase 开始时由 PhaseExecutor 重置）
     public internal(set) var attachments: [Attachment] = []
 
+    /// 当前 phase 闭包通过 `log(...)` 写入的日志条目（按写入顺序，每次 phase 开始时由 PhaseExecutor 重置）
+    public internal(set) var phaseLogs: [LogEntry] = []
+
+    /// PhaseExecutor 在 attempt 起始注入的事件流回调，phase 内 log 同步发出。
+    /// 闭包之外（包括 phase harvest 之后）保持 nil。
+    internal var logEmitter: (@Sendable (LogEntry) -> Void)?
+
     /// 已解析的 Plug 实例字典（按类型名索引）
     private let resolvedPlugs: [String: any PlugProtocol]
 
@@ -45,6 +52,26 @@ public final class TestContext {
         self.resolvedPlugs = resolvedPlugs
         self.config = config
     }
+
+    // MARK: - 日志（per-phase）
+
+    /// 写入一条 phase 日志。条目同时：
+    /// 1. 追加到 `phaseLogs`（harvest 时归入 `PhaseRecord.logs`）
+    /// 2. 通过 PhaseExecutor 注入的 emitter 转发到 session 事件流（实时显示）
+    public func log(_ level: LogLevel, _ message: String) {
+        let entry = LogEntry(level: level, message: message)
+        phaseLogs.append(entry)
+        logEmitter?(entry)
+    }
+
+    /// 便捷：debug 级别
+    public func logDebug(_ message: String) { log(.debug, message) }
+    /// 便捷：info 级别
+    public func logInfo(_ message: String) { log(.info, message) }
+    /// 便捷：warning 级别
+    public func logWarning(_ message: String) { log(.warning, message) }
+    /// 便捷：error 级别
+    public func logError(_ message: String) { log(.error, message) }
 
     // MARK: - 测试值（旧 API，仍可用）
 

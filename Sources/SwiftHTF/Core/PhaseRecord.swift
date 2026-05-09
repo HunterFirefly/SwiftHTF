@@ -27,6 +27,8 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
     public var groupPath: [String]
     /// 诊断结果（由 phase.diagnosers 在 fail/error 终态产生）
     public var diagnoses: [Diagnosis]
+    /// phase 闭包写入的日志（按写入顺序）
+    public var logs: [LogEntry]
 
     public init(name: String) {
         self.id = UUID()
@@ -41,6 +43,7 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
         self.errorMessage = nil
         self.groupPath = []
         self.diagnoses = []
+        self.logs = []
     }
 
     /// 阶段持续时间

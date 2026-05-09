@@ -45,14 +45,19 @@ public final class PhaseExecutor {
         }
     }
 
-    /// 跑 phase.diagnosers 并合并副作用（measurement / attachment / trace）进 record。
+    /// 跑 phase.diagnosers 并合并副作用（measurement / attachment / trace / logs）进 record。
     /// diagnoser 写的 measurement / trace 不再跑 spec validation —— 视为辅助调试信息。
     private func runDiagnosers(record: PhaseRecord, phase: Phase) async -> PhaseRecord {
         var r = record
+        // 暂时重启 logEmitter，让 diagnoser 内的 ctx.log 也能广播到事件流
+        let stringEmitter = self.emitLog
+        context.logEmitter = { entry in
+            stringEmitter?("[\(entry.level.rawValue)] \(entry.message)")
+        }
         for diagnoser in phase.diagnosers {
             let diagnoses = await diagnoser.diagnose(record: r, context: context)
             r.diagnoses.append(contentsOf: diagnoses)
-            // diagnoser 副作用：合并新写入的 ctx.measurements / ctx.series / ctx.attachments
+            // diagnoser 副作用：合并新写入的 ctx.measurements / ctx.series / ctx.attachments / ctx.phaseLogs
             for (name, m) in context.measurements {
                 r.measurements[name] = m
             }
@@ -60,13 +65,16 @@ public final class PhaseExecutor {
                 r.traces[name] = s
             }
             r.attachments.append(contentsOf: context.attachments)
+            r.logs.append(contentsOf: context.phaseLogs)
             context.measurements = [:]
             context.series = [:]
             context.attachments = []
+            context.phaseLogs = []
             for d in diagnoses {
                 log("[\(phase.definition.name)] ---> Diagnosis (\(d.severity.rawValue)) \(d.code): \(d.message)")
             }
         }
+        context.logEmitter = nil
         return r
     }
 
@@ -79,12 +87,21 @@ public final class PhaseExecutor {
             uniqueKeysWithValues: phase.series.map { ($0.name, $0) }
         )
 
+        // 注入 phase logger emitter，让 ctx.log 既写 phaseLogs 又广播到事件流
+        let stringEmitter = self.emitLog
+        context.logEmitter = { entry in
+            stringEmitter?("[\(entry.level.rawValue)] \(entry.message)")
+        }
+
         var lastError: Error?
         var attempts = 0
         let maxAttempts = phase.definition.retryCount + 1
 
         while attempts < maxAttempts {
             attempts += 1
+            // 每次 attempt 起始重置 ctx 的 phase 局部状态（measurements/series/attachments
+            // 由 harvest 末尾清空；logs 用 retry 维度重置以反映最后一次 attempt 的实际日志）
+            context.phaseLogs = []
 
             do {
                 let result = try await executeWithTimeout(phase: phase, context: context)
@@ -247,9 +264,12 @@ public final class PhaseExecutor {
         r.traces = collectedSeries
 
         r.attachments = context.attachments
+        r.logs = context.phaseLogs
         context.measurements = [:]
         context.series = [:]
         context.attachments = []
+        context.phaseLogs = []
+        context.logEmitter = nil
 
         // 仅当 phase 当前还是 pass 时升级（不覆盖 .skip/.error/.fail）
         if r.outcome == .pass {
