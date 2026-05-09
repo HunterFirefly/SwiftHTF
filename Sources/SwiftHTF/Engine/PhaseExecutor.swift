@@ -15,10 +15,30 @@ public final class PhaseExecutor {
         self.emitLog = emitLog
     }
 
-    /// 执行单个阶段
-    /// - Parameter phase: 阶段定义
-    /// - Returns: 阶段记录
+    /// 执行单个阶段。
+    ///
+    /// 在原子 `executeAttempt` 之外包一层 measurement-repeat：
+    /// 当 phase 闭包返回 `.continue` 但 measurement 验证失败导致 outcome 升级为 `.fail` 时，
+    /// 若 `repeatOnMeasurementFail` 配额未用尽则重跑（清空 ctx.measurements / attachments 由
+    /// harvest 自身完成）。`retryCount` 与 measurement-repeat 是独立计数器，不互相消耗。
     func execute(phase: Phase) async -> PhaseRecord {
+        let maxMeasurementRepeats = phase.repeatOnMeasurementFail
+        var measurementRepeatsUsed = 0
+
+        while true {
+            let record = await executeAttempt(phase: phase)
+            let measurementCausedFail = record.outcome == .fail
+                && record.measurements.values.contains { $0.outcome == .fail }
+            if measurementCausedFail && measurementRepeatsUsed < maxMeasurementRepeats {
+                measurementRepeatsUsed += 1
+                log("[\(phase.definition.name)] ---> Repeat (measurement fail \(measurementRepeatsUsed)/\(maxMeasurementRepeats))")
+                continue
+            }
+            return record
+        }
+    }
+
+    private func executeAttempt(phase: Phase) async -> PhaseRecord {
         var phaseRecord = PhaseRecord(name: phase.definition.name)
         log("[\(phase.definition.name)] ---> Start")
 

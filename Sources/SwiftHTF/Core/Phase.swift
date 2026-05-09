@@ -44,6 +44,9 @@ public struct Phase: Identifiable, Sendable {
     public let measurements: [MeasurementSpec]
     /// 运行时条件门：返回 false 跳过此 phase（outcome=.skip，不计 fail）
     public let runIf: RunIfPredicate?
+    /// 当 phase 闭包返回 `.continue` 但有 measurement 验证失败时，最多再尝试几次。
+    /// 与 `retryCount`（处理异常 / 显式 `.retry`）独立计数，互不消耗。
+    public let repeatOnMeasurementFail: Int
 
     /// 初始化
     /// - Parameters:
@@ -54,6 +57,7 @@ public struct Phase: Identifiable, Sendable {
     ///   - unit: 单位
     ///   - measurements: 声明式 measurement 规约
     ///   - runIf: 运行时条件门
+    ///   - repeatOnMeasurementFail: measurement 失败时最多重跑次数（与 retryCount 独立）
     public init(
         definition: PhaseDefinition,
         validators: [Validator] = [],
@@ -61,7 +65,8 @@ public struct Phase: Identifiable, Sendable {
         upperLimit: String? = nil,
         unit: String? = nil,
         measurements: [MeasurementSpec] = [],
-        runIf: RunIfPredicate? = nil
+        runIf: RunIfPredicate? = nil,
+        repeatOnMeasurementFail: Int = 0
     ) {
         self.definition = definition
         self.validators = validators
@@ -70,6 +75,7 @@ public struct Phase: Identifiable, Sendable {
         self.unit = unit
         self.measurements = measurements
         self.runIf = runIf
+        self.repeatOnMeasurementFail = repeatOnMeasurementFail
     }
 
     /// 便捷初始化
@@ -82,6 +88,7 @@ public struct Phase: Identifiable, Sendable {
         unit: String? = nil,
         measurements: [MeasurementSpec] = [],
         runIf: RunIfPredicate? = nil,
+        repeatOnMeasurementFail: Int = 0,
         execute: @escaping @Sendable @MainActor (TestContext) async throws -> PhaseResult
     ) {
         self.definition = PhaseDefinition(
@@ -96,5 +103,6 @@ public struct Phase: Identifiable, Sendable {
         self.unit = unit
         self.measurements = measurements
         self.runIf = runIf
+        self.repeatOnMeasurementFail = repeatOnMeasurementFail
     }
 }
