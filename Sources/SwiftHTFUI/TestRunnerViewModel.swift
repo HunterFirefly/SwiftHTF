@@ -61,14 +61,14 @@ public final class TestRunnerViewModel: ObservableObject {
                         self.outcome = r.outcome
                         self.record = r
                         self.serialNumber = r.serialNumber
+                        return // 主动退出，避免后续残留事件再写状态
                     }
                 }
             }
 
             _ = await exec.execute(serialNumber: serialNumber)
-            // 给 listener 一点时间消费 testCompleted
-            try? await Task.sleep(nanoseconds: 50_000_000)
-            listener.cancel()
+            // 等 listener 自然结束（testCompleted 触发 return）
+            _ = await listener.value
             self?.isRunning = false
             self?.runner = nil
         }
