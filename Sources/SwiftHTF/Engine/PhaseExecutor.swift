@@ -190,69 +190,22 @@ public final class PhaseExecutor {
         return phase.failureExceptions.contains { ObjectIdentifier($0) == errorId }
     }
 
+    /// harvest 聚合 verdict
+    private struct HarvestVerdict {
+        var anyFailed: Bool = false
+        var anyMarginal: Bool = false
+        var failureMessages: [String] = []
+        var marginalMessages: [String] = []
+    }
+
     /// 将 ctx.measurements / ctx.series 收集到 phaseRecord，按 spec 跑 validator，写回各自
     /// outcome/validatorMessages；任一 measurement 或 trace fail 时把 phase 从 .pass 升级为 .fail；
     /// 任一 marginal 时升级为 .marginalPass。最后清空 ctx 给下个 phase 使用。
     private func harvest(_ record: PhaseRecord, phase: Phase) -> PhaseRecord {
         var r = record
-        let specsByName: [String: MeasurementSpec] = Dictionary(
-            uniqueKeysWithValues: phase.measurements.map { ($0.name, $0) }
-        )
-        let seriesSpecsByName: [String: SeriesMeasurementSpec] = Dictionary(
-            uniqueKeysWithValues: phase.series.map { ($0.name, $0) }
-        )
-        var anyMeasurementFailed = false
-        var failureMessages: [String] = []
-        var anyMeasurementMarginal = false
-        var marginalMessages: [String] = []
-
-        // 单点 measurements
-        var collected: [String: Measurement] = [:]
-        for (name, m) in context.measurements {
-            var updated = m
-            if let spec = specsByName[name] {
-                let (verdict, messages) = spec.run(on: m.value)
-                updated.validatorMessages = messages
-                switch verdict {
-                case .pass:
-                    updated.outcome = .pass
-                case .marginal:
-                    updated.outcome = .marginalPass
-                    anyMeasurementMarginal = true
-                    marginalMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
-                case .fail:
-                    updated.outcome = .fail
-                    anyMeasurementFailed = true
-                    failureMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
-                }
-            }
-            collected[name] = updated
-        }
-        r.measurements = collected
-
-        // Series traces
-        var collectedSeries: [String: SeriesMeasurement] = [:]
-        for (name, s) in context.series {
-            var updated = s
-            if let spec = seriesSpecsByName[name] {
-                let (verdict, messages) = spec.run(on: s.samples)
-                updated.validatorMessages = messages
-                switch verdict {
-                case .pass:
-                    updated.outcome = .pass
-                case .marginal:
-                    updated.outcome = .marginalPass
-                    anyMeasurementMarginal = true
-                    marginalMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
-                case .fail:
-                    updated.outcome = .fail
-                    anyMeasurementFailed = true
-                    failureMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
-                }
-            }
-            collectedSeries[name] = updated
-        }
-        r.traces = collectedSeries
+        var verdict = HarvestVerdict()
+        r.measurements = collectMeasurements(phase: phase, verdict: &verdict)
+        r.traces = collectSeries(phase: phase, verdict: &verdict)
 
         r.attachments = context.attachments
         r.logs = context.phaseLogs
@@ -264,18 +217,120 @@ public final class PhaseExecutor {
 
         // 仅当 phase 当前还是 pass 时升级（不覆盖 .skip/.error/.fail）
         if r.outcome == .pass {
-            if anyMeasurementFailed {
+            if verdict.anyFailed {
                 r.outcome = .fail
                 if r.errorMessage == nil {
-                    r.errorMessage = failureMessages.joined(separator: "; ")
+                    r.errorMessage = verdict.failureMessages.joined(separator: "; ")
                 }
-                log("[\(phase.definition.name)] ---> FAIL (measurement): \(failureMessages.joined(separator: "; "))")
-            } else if anyMeasurementMarginal {
+                log("[\(phase.definition.name)] ---> FAIL (measurement): \(verdict.failureMessages.joined(separator: "; "))")
+            } else if verdict.anyMarginal {
                 r.outcome = .marginalPass
-                log("[\(phase.definition.name)] ---> MARGINAL: \(marginalMessages.joined(separator: "; "))")
+                log("[\(phase.definition.name)] ---> MARGINAL: \(verdict.marginalMessages.joined(separator: "; "))")
             }
         }
         return r
+    }
+
+    /// 单点 measurements 收集 + missing-required 处理。
+    private func collectMeasurements(
+        phase: Phase, verdict: inout HarvestVerdict
+    ) -> [String: Measurement] {
+        let specsByName: [String: MeasurementSpec] = Dictionary(
+            uniqueKeysWithValues: phase.measurements.map { ($0.name, $0) }
+        )
+        var collected: [String: Measurement] = [:]
+        for (name, m) in context.measurements {
+            var updated = m
+            if let spec = specsByName[name] {
+                let (v, messages) = spec.run(on: m.value)
+                updated.validatorMessages = messages
+                applyMeasurementVerdict(name: name, verdict: v, messages: messages,
+                                        updated: &updated, agg: &verdict)
+            }
+            collected[name] = updated
+        }
+        for spec in phase.measurements
+            where collected[spec.name] == nil && !spec.isOptional
+        {
+            let msg = "missing required measurement"
+            collected[spec.name] = Measurement(
+                name: spec.name, value: .null, unit: spec.unit,
+                outcome: .fail, validatorMessages: [msg]
+            )
+            verdict.anyFailed = true
+            verdict.failureMessages.append("[\(spec.name)] \(msg)")
+        }
+        return collected
+    }
+
+    /// Series traces 收集 + missing-required 处理。
+    private func collectSeries(
+        phase: Phase, verdict: inout HarvestVerdict
+    ) -> [String: SeriesMeasurement] {
+        let seriesSpecsByName: [String: SeriesMeasurementSpec] = Dictionary(
+            uniqueKeysWithValues: phase.series.map { ($0.name, $0) }
+        )
+        var collected: [String: SeriesMeasurement] = [:]
+        for (name, s) in context.series {
+            var updated = s
+            if let spec = seriesSpecsByName[name] {
+                let (v, messages) = spec.run(on: s.samples)
+                updated.validatorMessages = messages
+                applySeriesVerdict(name: name, verdict: v, messages: messages,
+                                   updated: &updated, agg: &verdict)
+            }
+            collected[name] = updated
+        }
+        for spec in phase.series
+            where collected[spec.name] == nil && !spec.isOptional
+        {
+            let msg = "missing required series"
+            collected[spec.name] = SeriesMeasurement(
+                name: spec.name, description: spec.description,
+                dimensions: spec.dimensions,
+                value: spec.value ?? Dimension(name: "value"),
+                outcome: .fail, validatorMessages: [msg]
+            )
+            verdict.anyFailed = true
+            verdict.failureMessages.append("[\(spec.name)] \(msg)")
+        }
+        return collected
+    }
+
+    private func applyMeasurementVerdict(
+        name: String, verdict: MeasurementSpec.Verdict, messages: [String],
+        updated: inout Measurement, agg: inout HarvestVerdict
+    ) {
+        switch verdict {
+        case .pass:
+            updated.outcome = .pass
+        case .marginal:
+            updated.outcome = .marginalPass
+            agg.anyMarginal = true
+            agg.marginalMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
+        case .fail:
+            updated.outcome = .fail
+            agg.anyFailed = true
+            agg.failureMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
+        }
+    }
+
+    private func applySeriesVerdict(
+        name: String, verdict: MeasurementSpec.Verdict, messages: [String],
+        updated: inout SeriesMeasurement, agg: inout HarvestVerdict
+    ) {
+        switch verdict {
+        case .pass:
+            updated.outcome = .pass
+        case .marginal:
+            updated.outcome = .marginalPass
+            agg.anyMarginal = true
+            agg.marginalMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
+        case .fail:
+            updated.outcome = .fail
+            agg.anyFailed = true
+            agg.failureMessages.append(contentsOf: messages.map { "[\(name)] \($0)" })
+        }
     }
 
     private func executeWithTimeout(phase: Phase, context: TestContext) async throws -> PhaseResult {

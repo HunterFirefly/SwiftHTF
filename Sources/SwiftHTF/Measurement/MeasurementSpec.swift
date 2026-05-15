@@ -42,17 +42,22 @@ public struct MeasurementSpec: Sendable {
     public let unit: String?
     public let description: String?
     public let validators: [any MeasurementValidator]
+    /// `true` 表示 phase 内未调用 `ctx.measure(name, ...)` 也不算 fail（OpenHTF `is_optional`）；
+    /// 默认 `false`：声明即必需，缺测会让 phase outcome 降级为 `.fail`。
+    public let isOptional: Bool
 
     public init(
         name: String,
         unit: String? = nil,
         description: String? = nil,
-        validators: [any MeasurementValidator] = []
+        validators: [any MeasurementValidator] = [],
+        isOptional: Bool = false
     ) {
         self.name = name
         self.unit = unit
         self.description = description
         self.validators = validators
+        self.isOptional = isOptional
     }
 
     /// 工厂入口
@@ -70,7 +75,19 @@ public struct MeasurementSpec: Sendable {
             name: name,
             unit: unit,
             description: description,
-            validators: validators + [validator]
+            validators: validators + [validator],
+            isOptional: isOptional
+        )
+    }
+
+    /// 标记为可选：未记录值时不进 phase outcome 聚合；记录后仍按 validator 链校验。
+    public func optional() -> MeasurementSpec {
+        MeasurementSpec(
+            name: name,
+            unit: unit,
+            description: description,
+            validators: validators,
+            isOptional: true
         )
     }
 
@@ -140,6 +157,21 @@ public extension MeasurementSpec {
     /// 字符串 / 数组 / 对象非空（忽略前后空白）
     func notEmpty() -> MeasurementSpec {
         with(NotEmptyMeasurementValidator())
+    }
+
+    /// 值必须命中给定集合（OpenHTF `oneOf`）。任意 Encodable 项内部归一化为 AnyCodableValue。
+    func oneOf(_ values: [some Encodable]) -> MeasurementSpec {
+        with(OneOfValidator(allowed: values.map { AnyCodableValue.from($0) }))
+    }
+
+    /// 值长度等于 N：作用于 `.string`（字符数）/ `.array`（元素数）/ `.object`（键数）。
+    func lengthEquals(_ n: Int) -> MeasurementSpec {
+        with(LengthEqualsValidator(expected: n))
+    }
+
+    /// 值（必须是 array）按集合相等：忽略顺序与重复，与给定集合一一对应（OpenHTF `set_equals`）。
+    func setEquals(_ values: [some Encodable]) -> MeasurementSpec {
+        with(SetEqualsValidator(expected: values.map { AnyCodableValue.from($0) }))
     }
 
     /// 数值在 [lower, upper] 内为 pass，否则报 marginal（不算 fail）。
@@ -337,5 +369,74 @@ public struct CustomMeasurementValidator: MeasurementValidator {
 
     public func validate(_ value: AnyCodableValue) -> MeasurementValidationResult {
         block(value)
+    }
+}
+
+/// 集合命中：value ∈ allowed
+public struct OneOfValidator: MeasurementValidator {
+    public let allowed: [AnyCodableValue]
+
+    public init(allowed: [AnyCodableValue]) {
+        self.allowed = allowed
+    }
+
+    public func validate(_ value: AnyCodableValue) -> MeasurementValidationResult {
+        if allowed.contains(value) { return .pass }
+        return .fail("\(label): 实际 \(value.displayString)")
+    }
+
+    public var label: String {
+        "one_of[\(allowed.map(\.displayString).joined(separator: ", "))]"
+    }
+}
+
+/// 长度相等：作用于 string / array / object
+public struct LengthEqualsValidator: MeasurementValidator {
+    public let expected: Int
+
+    public init(expected: Int) {
+        self.expected = expected
+    }
+
+    public func validate(_ value: AnyCodableValue) -> MeasurementValidationResult {
+        let actual: Int? = switch value {
+        case let .string(s): s.count
+        case let .array(a): a.count
+        case let .object(o): o.count
+        case .null, .bool, .int, .double: nil
+        }
+        guard let actual else {
+            return .fail("\(label): 值类型不支持长度（\(value.displayString)）")
+        }
+        if actual == expected { return .pass }
+        return .fail("\(label): 实际长度 \(actual)")
+    }
+
+    public var label: String {
+        "length==\(expected)"
+    }
+}
+
+/// 集合相等（数组当集合比，忽略顺序与重复）
+public struct SetEqualsValidator: MeasurementValidator {
+    public let expected: [AnyCodableValue]
+
+    public init(expected: [AnyCodableValue]) {
+        self.expected = expected
+    }
+
+    public func validate(_ value: AnyCodableValue) -> MeasurementValidationResult {
+        guard case let .array(arr) = value else {
+            return .fail("\(label): 值非数组（\(value.displayString)）")
+        }
+        // AnyCodableValue 未 Hashable，用 O(n²) 包含判断；测量集合通常很小
+        let allInActual = expected.allSatisfy { e in arr.contains(e) }
+        let allInExpected = arr.allSatisfy { a in expected.contains(a) }
+        if allInActual, allInExpected { return .pass }
+        return .fail("\(label): 实际 [\(arr.map(\.displayString).joined(separator: ", "))]")
+    }
+
+    public var label: String {
+        "set_equals[\(expected.map(\.displayString).joined(separator: ", "))]"
     }
 }

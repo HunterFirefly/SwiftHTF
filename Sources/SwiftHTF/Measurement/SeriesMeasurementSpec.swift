@@ -52,19 +52,24 @@ public struct SeriesMeasurementSpec: Sendable {
     public let dimensions: [Dimension]
     public let value: Dimension?
     public let validators: [any SeriesValidator]
+    /// `true` 表示 phase 内未调用 `ctx.recordSeries(name, ...)` 也不算 fail（OpenHTF `is_optional`）；
+    /// 默认 `false`：声明即必需，缺测会让 phase outcome 降级为 `.fail`。
+    public let isOptional: Bool
 
     public init(
         name: String,
         description: String? = nil,
         dimensions: [Dimension] = [],
         value: Dimension? = nil,
-        validators: [any SeriesValidator] = []
+        validators: [any SeriesValidator] = [],
+        isOptional: Bool = false
     ) {
         self.name = name
         self.description = description
         self.dimensions = dimensions
         self.value = value
         self.validators = validators
+        self.isOptional = isOptional
     }
 
     /// 工厂入口
@@ -82,7 +87,8 @@ public struct SeriesMeasurementSpec: Sendable {
             description: description,
             dimensions: dimensions + [Dimension(name: name, unit: unit)],
             value: value,
-            validators: validators
+            validators: validators,
+            isOptional: isOptional
         )
     }
 
@@ -93,7 +99,8 @@ public struct SeriesMeasurementSpec: Sendable {
             description: description,
             dimensions: dimensions,
             value: Dimension(name: name, unit: unit),
-            validators: validators
+            validators: validators,
+            isOptional: isOptional
         )
     }
 
@@ -104,7 +111,20 @@ public struct SeriesMeasurementSpec: Sendable {
             description: description,
             dimensions: dimensions,
             value: value,
-            validators: validators + [validator]
+            validators: validators + [validator],
+            isOptional: isOptional
+        )
+    }
+
+    /// 标记为可选：未记录 series 时不进 phase outcome 聚合；记录后仍按 validator 链校验。
+    public func optional() -> SeriesMeasurementSpec {
+        SeriesMeasurementSpec(
+            name: name,
+            description: description,
+            dimensions: dimensions,
+            value: value,
+            validators: validators,
+            isOptional: true
         )
     }
 
@@ -145,6 +165,11 @@ public extension SeriesMeasurementSpec {
     /// 采样数在 [lower, upper]
     func lengthInRange(_ lower: Int, _ upper: Int) -> SeriesMeasurementSpec {
         with(SeriesLengthValidator(lower: lower, upper: upper))
+    }
+
+    /// 采样数恰好等于 N（OpenHTF `length_equals` 在 series 上的语义）
+    func lengthEquals(_ n: Int) -> SeriesMeasurementSpec {
+        with(SeriesLengthValidator(lower: n, upper: n))
     }
 
     /// 对每个采样跑闭包；任一 .fail → fail，任一 .marginal → marginal，否则 pass
