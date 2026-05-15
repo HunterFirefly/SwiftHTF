@@ -144,7 +144,17 @@ public final class PhaseExecutor {
                 case .stop:
                     phaseRecord.endTime = Date()
                     phaseRecord.outcome = .error
+                    phaseRecord.stopRequested = true
                     log("[\(phase.definition.name)] ---> STOP")
+                    return harvest(phaseRecord, phase: phase)
+
+                case .failSubtest:
+                    // 在 Subtest 内：TestSession.runSubtest 检测 subtestFailRequested 短路
+                    // 不在 Subtest 内：等价 .failAndContinue（phase 标 .fail，subtestFailRequested 留着但无副作用）
+                    phaseRecord.endTime = Date()
+                    phaseRecord.outcome = .fail
+                    phaseRecord.subtestFailRequested = true
+                    log("[\(phase.definition.name)] ---> FAIL_SUBTEST")
                     return harvest(phaseRecord, phase: phase)
                 }
 

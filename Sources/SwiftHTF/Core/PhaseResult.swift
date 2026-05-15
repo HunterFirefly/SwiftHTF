@@ -12,4 +12,7 @@ public enum PhaseResult: Sendable {
     case skip
     /// 立即终止测试
     case stop
+    /// 让所在 Subtest 失败并短路剩余节点；不在 Subtest 内时等价于 `.failAndContinue`。
+    /// PhaseRecord.outcome 仍标 .fail，且 subtestFailRequested=true 供 TestSession 检测。
+    case failSubtest
 }

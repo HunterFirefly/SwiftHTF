@@ -13,6 +13,7 @@ A modern Swift hardware-test framework inspired by [OpenHTF](https://github.com/
 
 - **Declarative test plans** — compose `Phase`s with a `@resultBuilder` DSL, including `if` / `for` / availability branches.
 - **Nested PhaseGroup** — `Group(name) { ... } setup: { ... } teardown: { ... }` sits alongside `Phase` and nests freely; `continueOnFail` is local to each group.
+- **Subtest (isolated-failure unit)** — `Subtest("name") { ... }` sits alongside `Phase` / `Group`. Any phase fail / error / `.failSubtest` short-circuits the remaining nodes, but **does not propagate** to `TestRecord.outcome`. A separate `SubtestRecord` (with `phaseIDs` back-references) is emitted for UI / sinks.
 - **Declarative measurements** — pre-declare `MeasurementSpec` on a phase, chain validators (`inRange` / `equals` / `matchesRegex` / `withinPercent` / `notEmpty` / `marginalRange` / `custom`); outcomes are written back to `Measurement.outcome`.
 - **Multi-dimensional measurements (`SeriesMeasurement`)** — `ctx.recordSeries("iv") { rec in ... }` incrementally captures IV / sweep / temperature curves; `SeriesMeasurementSpec` supports `lengthAtLeast` / `each` / `custom` validators.
 - **Three-state outcome** — `pass` / `marginalPass` / `fail` / `error` / `skip`, with proper "in-spec but near limit" semantics.
@@ -176,6 +177,44 @@ Each phase closure returns a `PhaseResult`:
 | `.retry`          | Run the same phase again (up to `retryCount`)        |
 | `.skip`           | Skip without running                                 |
 | `.stop`           | Abort the whole test                                 |
+| `.failSubtest`    | Mark phase fail and short-circuit enclosing Subtest (equivalent to `.failAndContinue` when not in a Subtest) |
+
+### Subtest (isolated-failure unit)
+
+A `Subtest` is a sibling node to `Phase` / `Group` that **isolates failure**: any inner phase / group failure short-circuits the remaining nodes but does **not** propagate to `TestRecord.outcome`. Subtest results are emitted as `SubtestRecord` entries on `TestRecord.subtests`, with `phaseIDs` cross-referencing `TestRecord.phases`.
+
+```swift
+TestPlan(name: "Board") {
+    Phase(name: "Connect") { _ in .continue }
+
+    Subtest("PowerTests") {
+        Phase(name: "VccCheck") { _ in .continue }
+        Phase(name: "VddCheck") { _ in .failAndContinue }   // short-circuits this Subtest
+        Phase(name: "VbatCheck") { _ in .continue }         // not run
+    }
+
+    Phase(name: "Cleanup") { _ in .continue }   // still runs — Subtest failure is isolated
+}
+```
+
+Semantics:
+
+- Phase `.fail` / `.error` / `.failSubtest`, or nested `Group` failure → short-circuit remaining nodes in the Subtest.
+- Subtest failure does **not** set `TestRecord.outcome = .fail`. The outer test continues; inspect `record.subtests` to aggregate.
+- Nested `Subtest` failures do **not** propagate to the enclosing Subtest either — each Subtest is its own isolation boundary.
+- `.stop` still propagates across Subtest boundaries to abort the whole test.
+- `Subtest` accepts `runIf`; false → `SubtestRecord.outcome = .skip` and zero phases recorded.
+
+`SubtestRecord`:
+
+| Field          | Meaning                                                               |
+|----------------|-----------------------------------------------------------------------|
+| `id`           | Stable UUID across encode / decode                                    |
+| `name`         | As declared                                                           |
+| `outcome`      | `.pass` / `.fail` / `.error` / `.skip`                                |
+| `phaseIDs`     | `PhaseRecord.id`s of phases run inside this Subtest, in order         |
+| `failureReason`| Which inner node triggered the short-circuit (`"VddCheck: FAIL"`)     |
+| `startTime` / `endTime` / `duration` | Subtest-level timing                            |
 
 ### Declarative measurements & three-state outcome
 

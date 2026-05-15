@@ -26,6 +26,14 @@ private func phaseSymbol(_ o: PhaseOutcomeType) -> String {
     }
 }
 
+private func subtestSymbol(_ o: SubtestOutcome) -> String {
+    switch o {
+    case .pass: "✓"
+    case .fail, .error: "✗"
+    case .skip: "⏭"
+    }
+}
+
 /// 控制台输出回调
 public struct ConsoleOutput: OutputCallback {
     public init() {}
@@ -56,6 +64,18 @@ public struct ConsoleOutput: OutputCallback {
             }
             for d in phase.diagnoses {
                 lines.append("      🩺 [\(d.severity.rawValue)] \(d.code): \(d.message)")
+            }
+        }
+        if !record.subtests.isEmpty {
+            lines.append("Subtests:")
+            for s in record.subtests {
+                let mark = subtestSymbol(s.outcome)
+                let durStr = s.endTime == nil ? "0.00" : String(format: "%.2f", s.duration)
+                var line = "  \(mark) \(s.name) (\(durStr)s, \(s.phaseIDs.count) phases) → \(s.outcome.rawValue)"
+                if let reason = s.failureReason {
+                    line += " — \(reason)"
+                }
+                lines.append(line)
             }
         }
         lines.append("===================")
@@ -120,11 +140,19 @@ public struct CSVOutput: OutputCallback {
                 at: directory,
                 withIntermediateDirectories: true
             )
-            var lines = ["name,outcome,duration_s,measurements_count,traces_count,attachments_count,diagnoses_count,error"]
+            // 反查每个 phase 所属的 subtest 名（按 phaseIDs 索引）
+            var subtestByPhase: [UUID: String] = [:]
+            for s in record.subtests {
+                for pid in s.phaseIDs {
+                    subtestByPhase[pid] = s.name
+                }
+            }
+            var lines = ["name,outcome,subtest,duration_s,measurements_count,traces_count,attachments_count,diagnoses_count,error"]
             for p in record.phases {
                 lines.append([
                     Self.escape(p.name),
                     p.outcome.rawValue,
+                    Self.escape(subtestByPhase[p.id] ?? ""),
                     String(format: "%.3f", p.duration),
                     String(p.measurements.count),
                     String(p.traces.count),

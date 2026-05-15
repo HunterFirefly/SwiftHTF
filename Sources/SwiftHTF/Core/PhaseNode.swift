@@ -1,17 +1,19 @@
 import Foundation
 
-/// 测试计划节点：单个 Phase 或一个嵌套的 Group。
+/// 测试计划节点：单个 Phase、一个嵌套的 Group，或一个 Subtest。
 ///
-/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` 表达式包装，使用方很少直接构造。
+/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` / `Subtest` 表达式包装，使用方很少直接构造。
 public enum PhaseNode: Sendable {
     case phase(Phase)
     indirect case group(Group)
+    indirect case subtest(Subtest)
 
-    /// 节点名（phase 名 / group 名）
+    /// 节点名（phase 名 / group 名 / subtest 名）
     public var name: String {
         switch self {
         case let .phase(p): p.definition.name
         case let .group(g): g.name
+        case let .subtest(s): s.name
         }
     }
 
@@ -23,6 +25,61 @@ public enum PhaseNode: Sendable {
     public var asGroup: Group? {
         if case let .group(g) = self { return g }
         return nil
+    }
+
+    public var asSubtest: Subtest? {
+        if case let .subtest(s) = self { return s }
+        return nil
+    }
+}
+
+/// Subtest：一组 phase 形成的"可隔离失败"单元。
+///
+/// 与 `Group` 的关键差异：
+/// - 内部任一节点 `.fail` / `.error` / `.failSubtest` → **短路**剩余节点；
+/// - subtest 失败 **不传播** 到外层（外层 TestRecord.outcome 不因此变 .fail）；
+/// - 终态写入独立的 `SubtestRecord`（id / outcome / phaseIDs / failureReason），
+///   供 UI 与输出 sink 单独渲染聚合视图。
+///
+/// ```swift
+/// TestPlan(name: "Board") {
+///     Phase(name: "Connect") { _ in .continue }
+///     Subtest("PowerTests") {
+///         Phase(name: "VccCheck") { _ in .continue }
+///         Phase(name: "VddCheck") { _ in .failAndContinue }   // 短路：下一个不跑
+///         Phase(name: "VbatCheck") { _ in .continue }
+///     }
+///     Phase(name: "Cleanup") { _ in .continue }   // 仍然会跑
+/// }
+/// ```
+public struct Subtest: Sendable, Identifiable {
+    public let id: UUID
+    public let name: String
+    public let nodes: [PhaseNode]
+    /// 运行时条件门：返回 false 时整 subtest 跳过（SubtestRecord.outcome=.skip，phaseIDs=[]，不计 fail）。
+    public let runIf: RunIfPredicate?
+
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        nodes: [PhaseNode],
+        runIf: RunIfPredicate? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.nodes = nodes
+        self.runIf = runIf
+    }
+}
+
+public extension Subtest {
+    /// DSL builder 形式
+    init(
+        _ name: String,
+        runIf: RunIfPredicate? = nil,
+        @TestPlanBuilder nodes: () -> [PhaseNode]
+    ) {
+        self.init(name: name, nodes: nodes(), runIf: runIf)
     }
 }
 

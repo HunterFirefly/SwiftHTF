@@ -13,6 +13,7 @@
 
 - **声明式测试计划** —— 用 `@resultBuilder` DSL 组合 `Phase`，原生支持 `if` / `for` / `#available` 分支。
 - **嵌套 PhaseGroup** —— `Group(name) { ... } setup: { ... } teardown: { ... }` 与 Phase 同级，可任意层级嵌套；group 内 `continueOnFail` 局部生效。
+- **Subtest（可隔离失败单元）** —— `Subtest("name") { ... }` 与 Phase / Group 同级。内部任一 phase 失败 / error / `.failSubtest` 短路剩余节点，但**不传播**到 `TestRecord.outcome`；单独写入 `SubtestRecord`（含 `phaseIDs` 反向引用），供 UI / 输出 sink 单独渲染。
 - **声明式 Measurement** —— 在 phase 上预声明 `MeasurementSpec`，链式追加 validator (`inRange` / `equals` / `matchesRegex` / `withinPercent` / `notEmpty` / `marginalRange` / `custom`)，运行后写回 `Measurement.outcome`。
 - **多维 Measurement (`SeriesMeasurement`)** —— `ctx.recordSeries("iv") { rec in ... }` 增量收集 IV / 扫频 / 扫温曲线；`SeriesMeasurementSpec` 支持 `lengthAtLeast` / `each` / `custom` 等校验。
 - **三态 outcome** —— `pass` / `marginalPass` / `fail` / `error` / `skip`，支持靠近边界但仍合格的"放行但需关注"语义。
@@ -176,6 +177,44 @@ TestPlan(name: "Smoke") {
 | `.retry`           | 重新执行（最多 `retryCount` 次）         |
 | `.skip`            | 跳过                                     |
 | `.stop`            | 立即终止整个测试                         |
+| `.failSubtest`     | 标记 phase 失败并短路所在 Subtest（不在 Subtest 内时等价 `.failAndContinue`） |
+
+### Subtest（可隔离失败单元）
+
+`Subtest` 与 `Phase` / `Group` 平级的节点，**隔离失败**：内部 phase / group 失败时短路剩余节点，但**不传播**到 `TestRecord.outcome`。结果以 `SubtestRecord` 写入 `TestRecord.subtests`，通过 `phaseIDs` 反查 `TestRecord.phases`。
+
+```swift
+TestPlan(name: "Board") {
+    Phase(name: "Connect") { _ in .continue }
+
+    Subtest("PowerTests") {
+        Phase(name: "VccCheck") { _ in .continue }
+        Phase(name: "VddCheck") { _ in .failAndContinue }   // 短路本 Subtest
+        Phase(name: "VbatCheck") { _ in .continue }         // 不会跑
+    }
+
+    Phase(name: "Cleanup") { _ in .continue }   // 仍会跑 —— Subtest 失败被隔离
+}
+```
+
+语义：
+
+- phase 返回 `.fail` / `.error` / `.failSubtest`，或嵌套 `Group` 失败 → 短路 Subtest 剩余节点
+- Subtest 失败**不**让 `TestRecord.outcome = .fail`；外层测试继续；通过 `record.subtests` 聚合判定
+- 嵌套 Subtest 之间互相隔离，内层 fail 不传染外层
+- `.stop` 仍跨 Subtest 边界冒泡，终止整测试
+- `Subtest` 支持 `runIf`；false 时 `SubtestRecord.outcome = .skip`、`phaseIDs=[]`
+
+`SubtestRecord` 字段：
+
+| 字段             | 含义                                                              |
+|------------------|-------------------------------------------------------------------|
+| `id`             | 稳定 UUID，编解码后保留                                            |
+| `name`           | 声明时的名字                                                       |
+| `outcome`        | `.pass` / `.fail` / `.error` / `.skip`                            |
+| `phaseIDs`       | 本 Subtest 内 phase 在 `TestRecord.phases` 里的 id（按执行顺序）   |
+| `failureReason`  | 哪个节点触发了短路（如 `"VddCheck: FAIL"`）                        |
+| `startTime` / `endTime` / `duration` | Subtest 级时序                              |
 
 ### 声明式 Measurement & 三态 outcome
 

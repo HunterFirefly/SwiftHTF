@@ -35,6 +35,10 @@ public enum TestPlanBuilder {
         [.group(group)]
     }
 
+    public static func buildExpression(_ subtest: Subtest) -> [PhaseNode] {
+        [.subtest(subtest)]
+    }
+
     public static func buildExpression(_ node: PhaseNode) -> [PhaseNode] {
         [node]
     }

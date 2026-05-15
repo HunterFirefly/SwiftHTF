@@ -28,6 +28,12 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
     public var diagnoses: [Diagnosis]
     /// phase 闭包写入的日志（按写入顺序）
     public var logs: [LogEntry]
+    /// phase 闭包返回 `.failSubtest` 时由 PhaseExecutor 置为 true。
+    /// 在 Subtest 内 → 触发 subtest 短路；不在 Subtest 内 → 字段保留但无效。
+    public var subtestFailRequested: Bool
+    /// phase 闭包返回 `.stop` 时由 PhaseExecutor 置为 true。
+    /// TestSession 据此向外冒泡 GroupOutcome.stopped，不被 Subtest 的失败隔离吞掉。
+    public var stopRequested: Bool
 
     public init(name: String) {
         id = UUID()
@@ -42,6 +48,52 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
         groupPath = []
         diagnoses = []
         logs = []
+        subtestFailRequested = false
+        stopRequested = false
+    }
+
+    /// 显式 Codable：兼容旧 JSON 中无新增字段
+    private enum CodingKeys: String, CodingKey {
+        case id, name, startTime, endTime, outcome
+        case measurements, traces, attachments, errorMessage
+        case groupPath, diagnoses, logs
+        case subtestFailRequested, stopRequested
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        name = try c.decode(String.self, forKey: .name)
+        startTime = try c.decode(Date.self, forKey: .startTime)
+        endTime = try c.decodeIfPresent(Date.self, forKey: .endTime)
+        outcome = try c.decode(PhaseOutcomeType.self, forKey: .outcome)
+        measurements = try c.decodeIfPresent([String: Measurement].self, forKey: .measurements) ?? [:]
+        traces = try c.decodeIfPresent([String: SeriesMeasurement].self, forKey: .traces) ?? [:]
+        attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
+        errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
+        groupPath = try c.decodeIfPresent([String].self, forKey: .groupPath) ?? []
+        diagnoses = try c.decodeIfPresent([Diagnosis].self, forKey: .diagnoses) ?? []
+        logs = try c.decodeIfPresent([LogEntry].self, forKey: .logs) ?? []
+        subtestFailRequested = try c.decodeIfPresent(Bool.self, forKey: .subtestFailRequested) ?? false
+        stopRequested = try c.decodeIfPresent(Bool.self, forKey: .stopRequested) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(name, forKey: .name)
+        try c.encode(startTime, forKey: .startTime)
+        try c.encodeIfPresent(endTime, forKey: .endTime)
+        try c.encode(outcome, forKey: .outcome)
+        try c.encode(measurements, forKey: .measurements)
+        try c.encode(traces, forKey: .traces)
+        try c.encode(attachments, forKey: .attachments)
+        try c.encodeIfPresent(errorMessage, forKey: .errorMessage)
+        try c.encode(groupPath, forKey: .groupPath)
+        try c.encode(diagnoses, forKey: .diagnoses)
+        try c.encode(logs, forKey: .logs)
+        try c.encode(subtestFailRequested, forKey: .subtestFailRequested)
+        try c.encode(stopRequested, forKey: .stopRequested)
     }
 
     /// 阶段持续时间

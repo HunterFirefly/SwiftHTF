@@ -12,6 +12,34 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`Subtest` 节点**：与 `PhaseGroup` 平级的可隔离失败单元（对齐 OpenHTF `Subtest`
+  语义）。
+  - DSL：`Subtest("name") { Phase... Group... Subtest... }`，支持
+    `runIf` 条件门。
+  - 短路：内部任一 phase `.fail` / `.error` / `.failSubtest`，或嵌套
+    `Group` 失败，立即跳过 subtest 剩余节点。
+  - 隔离：subtest 失败 **不** 让 `TestRecord.outcome` 变 `.fail`；嵌套
+    subtest 失败也不传染外层 subtest。
+  - 聚合记录：新增 `TestRecord.subtests: [SubtestRecord]`，含 id /
+    outcome (`PASS/FAIL/ERROR/SKIP`) / startTime / endTime / phaseIDs /
+    failureReason。`phaseIDs` 与 `TestRecord.phases` 内的 `PhaseRecord.id`
+    一一对应，UI / 输出 sink 可按此关联聚合视图。
+  - `.stop` 仍跨 subtest 边界冒泡终止整测试。
+- **`PhaseResult.failSubtest`**：phase 闭包返回此值时，让所在 subtest 失败
+  并短路；不在 subtest 内时等价 `.failAndContinue`。
+- **`PhaseRecord.subtestFailRequested`** / **`stopRequested`** 标志字段。
+- `ConsoleOutput` 末尾追加 `Subtests:` 段（每条含 outcome / 持续时间 /
+  phase 数 / 失败原因）。
+- `CSVOutput` 增加 `subtest` 列，反查每个 phase 所属的 subtest 名。
+
+### Changed
+
+- `TestRecord` / `PhaseRecord` 使用显式 `Codable`，旧 JSON（不含
+  `subtests` / `subtestFailRequested` / `stopRequested`）反序列化时自动
+  填充默认值。
+
 ## [0.1.1] - 2026-05-09
 
 ### Changed

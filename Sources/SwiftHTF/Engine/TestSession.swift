@@ -151,6 +151,7 @@ public actor TestSession {
                 earlyExit = true
             }
             if outcome.aborted { record.outcome = .aborted; earlyExit = true }
+            if outcome.stopped { earlyExit = true }
         }
 
         if !earlyExit {
@@ -163,6 +164,7 @@ public actor TestSession {
             )
             if outcome.failed { record.outcome = .fail }
             if outcome.aborted { record.outcome = .aborted }
+            // .stop 不强制改 outcome（保留已有 pass/fail/marginalPass），仅短路后续
         }
 
         if !plan.teardownNodes.isEmpty {
@@ -199,9 +201,12 @@ public actor TestSession {
         record.serialNumber = sn
     }
 
-    private struct GroupOutcome {
+    fileprivate struct GroupOutcome {
         var failed: Bool = false
         var aborted: Bool = false
+        /// phase 闭包返回 `.stop` 或检测到致命错误，要求向外冒泡终止整测试。
+        /// 与 `aborted`（Task 取消 / unrecoverable）区分，避免 Subtest 隔离失败时误判为取消。
+        var stopped: Bool = false
     }
 
     private func runNodes(
@@ -214,90 +219,97 @@ public actor TestSession {
         var outcome = GroupOutcome()
         for node in nodes {
             if Task.isCancelled { outcome.aborted = true; return outcome }
+            let shouldTerminate: Bool
             switch node {
             case let .phase(phase):
-                if let runIf = phase.runIf {
-                    let proceed = await runIf(context)
-                    if !proceed {
-                        let skipRecord = makeSkipRecord(
-                            name: phase.definition.name,
-                            groupPath: groupPath,
-                            reason: "runIf=false"
-                        )
-                        record.phases.append(skipRecord)
-                        emit(.phaseCompleted(skipRecord))
-                        continue
-                    }
-                }
-                var phaseRecord = await runPhase(phase, context: context)
-                phaseRecord.groupPath = groupPath
-                record.phases.append(phaseRecord)
-                emit(.phaseCompleted(phaseRecord))
-                if phaseRecord.outcome == .fail || phaseRecord.outcome == .error {
-                    outcome.failed = true
-                    if !continueOnFail { return outcome }
-                }
+                let step = await runPhaseAsChild(
+                    phase: phase, groupPath: groupPath, into: &record, context: context
+                )
+                shouldTerminate = applyPhaseStep(step, continueOnFail: continueOnFail, into: &outcome)
             case let .group(g):
                 let nested = await runGroup(g, parentPath: groupPath, into: &record, context: context)
-                if nested.failed {
-                    outcome.failed = true
-                    if !continueOnFail { return outcome }
-                }
-                if nested.aborted {
-                    outcome.aborted = true
-                    return outcome
-                }
+                shouldTerminate = mergeNestedOutcome(nested, into: &outcome, continueOnFail: continueOnFail)
+            case let .subtest(s):
+                let nested = await runSubtest(s, parentPath: groupPath, into: &record, context: context)
+                shouldTerminate = mergeSubtestOutcome(nested, into: &outcome)
             }
+            if shouldTerminate { return outcome }
         }
         return outcome
     }
 
-    private func runGroup(
-        _ g: Group,
-        parentPath: [String],
+    /// 一次 phase 子节点的执行摘要：用于让外层 runNodes 决定是否短路。
+    fileprivate struct PhaseStep {
+        var failed: Bool = false
+        var stopped: Bool = false
+    }
+
+    /// 在 runNodes 内跑一个 phase（不修改 outcome 本身，只返回摘要供 caller 决策）。
+    private func runPhaseAsChild(
+        phase: Phase,
+        groupPath: [String],
         into record: inout TestRecord,
         context: TestContext
-    ) async -> GroupOutcome {
-        if let runIf = g.runIf {
-            let proceed = await runIf(context)
-            if !proceed {
-                let skipRecord = makeSkipRecord(name: g.name, groupPath: parentPath, reason: "runIf=false")
-                record.phases.append(skipRecord)
-                emit(.phaseCompleted(skipRecord))
-                return GroupOutcome(failed: false, aborted: false)
-            }
-        }
-
-        let path = parentPath + [g.name]
-        var groupOutcome = GroupOutcome()
-
-        let setupOut = await runNodes(
-            g.setup, groupPath: path, continueOnFail: false,
-            into: &record, context: context
-        )
-        if setupOut.aborted { return GroupOutcome(failed: false, aborted: true) }
-        if setupOut.failed {
-            groupOutcome.failed = true
-            _ = await runNodes(
-                g.teardown, groupPath: path, continueOnFail: true,
-                into: &record, context: context
+    ) async -> PhaseStep {
+        if let runIf = phase.runIf, await runIf(context) == false {
+            let skipRecord = makeSkipRecord(
+                name: phase.definition.name, groupPath: groupPath, reason: "runIf=false"
             )
-            return groupOutcome
+            record.phases.append(skipRecord)
+            emit(.phaseCompleted(skipRecord))
+            return PhaseStep()
         }
+        var phaseRecord = await runPhase(phase, context: context)
+        phaseRecord.groupPath = groupPath
+        record.phases.append(phaseRecord)
+        emit(.phaseCompleted(phaseRecord))
+        if phaseRecord.stopRequested {
+            // .stop 优先冒泡，不被 continueOnFail 吞，也让 subtest 隔离不影响传播
+            return PhaseStep(failed: false, stopped: true)
+        }
+        let failed = phaseRecord.outcome == .fail || phaseRecord.outcome == .error
+        return PhaseStep(failed: failed, stopped: false)
+    }
 
-        let childOut = await runNodes(
-            g.children, groupPath: path, continueOnFail: g.continueOnFail,
-            into: &record, context: context
-        )
-        if childOut.failed { groupOutcome.failed = true }
-        if childOut.aborted { groupOutcome.aborted = true }
+    /// 把 PhaseStep 合并进 GroupOutcome；返回是否立即终止 caller 的循环。
+    private func applyPhaseStep(
+        _ step: PhaseStep,
+        continueOnFail: Bool,
+        into outcome: inout GroupOutcome
+    ) -> Bool {
+        if step.stopped { outcome.stopped = true; return true }
+        if step.failed {
+            outcome.failed = true
+            return !continueOnFail
+        }
+        return false
+    }
 
-        _ = await runNodes(
-            g.teardown, groupPath: path, continueOnFail: true,
-            into: &record, context: context
-        )
+    /// 合并嵌套 Group 的结果到外层 outcome。
+    /// - Returns: true 表示需要立即终止外层节点序列。
+    private func mergeNestedOutcome(
+        _ nested: GroupOutcome,
+        into outcome: inout GroupOutcome,
+        continueOnFail: Bool
+    ) -> Bool {
+        if nested.failed {
+            outcome.failed = true
+            if !continueOnFail { return true }
+        }
+        if nested.aborted { outcome.aborted = true; return true }
+        if nested.stopped { outcome.stopped = true; return true }
+        return false
+    }
 
-        return groupOutcome
+    /// 合并嵌套 Subtest 的结果到外层 outcome。**不**传播 failed（隔离单元）。
+    /// - Returns: true 表示需要立即终止外层节点序列。
+    private func mergeSubtestOutcome(
+        _ nested: GroupOutcome,
+        into outcome: inout GroupOutcome
+    ) -> Bool {
+        if nested.aborted { outcome.aborted = true; return true }
+        if nested.stopped { outcome.stopped = true; return true }
+        return false
     }
 
     private func makeSkipRecord(name: String, groupPath: [String], reason: String) -> PhaseRecord {
@@ -323,6 +335,208 @@ public actor TestSession {
     private func notifyOutputs(_ record: TestRecord) async {
         for callback in outputCallbacks {
             await callback.save(record: record)
+        }
+    }
+}
+
+// MARK: - Group 执行
+
+extension TestSession {
+    private func runGroup(
+        _ g: Group,
+        parentPath: [String],
+        into record: inout TestRecord,
+        context: TestContext
+    ) async -> GroupOutcome {
+        if let runIf = g.runIf, await runIf(context) == false {
+            let skipRecord = makeSkipRecord(name: g.name, groupPath: parentPath, reason: "runIf=false")
+            record.phases.append(skipRecord)
+            emit(.phaseCompleted(skipRecord))
+            return GroupOutcome()
+        }
+
+        let path = parentPath + [g.name]
+
+        let setupOut = await runNodes(
+            g.setup, groupPath: path, continueOnFail: false,
+            into: &record, context: context
+        )
+        if let early = await handleGroupSetupEarlyExit(setupOut, g: g, path: path, into: &record, context: context) {
+            return early
+        }
+
+        var groupOutcome = GroupOutcome()
+        let childOut = await runNodes(
+            g.children, groupPath: path, continueOnFail: g.continueOnFail,
+            into: &record, context: context
+        )
+        groupOutcome.failed = childOut.failed
+        groupOutcome.aborted = childOut.aborted
+        groupOutcome.stopped = childOut.stopped
+
+        _ = await runNodes(
+            g.teardown, groupPath: path, continueOnFail: true,
+            into: &record, context: context
+        )
+        return groupOutcome
+    }
+
+    /// Setup 阶段非正常终止时的早退处理：aborted / stopped / failed 三种。
+    /// - Returns: 非 nil 表示外层应直接返回该结果（teardown 已按需跑过）。
+    private func handleGroupSetupEarlyExit(
+        _ setupOut: GroupOutcome,
+        g: Group,
+        path: [String],
+        into record: inout TestRecord,
+        context: TestContext
+    ) async -> GroupOutcome? {
+        if setupOut.aborted { return GroupOutcome(failed: false, aborted: true) }
+        if setupOut.stopped {
+            // setup 中冒出 .stop：仍跑 teardown，但整测试要终止
+            _ = await runNodes(
+                g.teardown, groupPath: path, continueOnFail: true,
+                into: &record, context: context
+            )
+            return GroupOutcome(failed: false, aborted: false, stopped: true)
+        }
+        if setupOut.failed {
+            _ = await runNodes(
+                g.teardown, groupPath: path, continueOnFail: true,
+                into: &record, context: context
+            )
+            return GroupOutcome(failed: true)
+        }
+        return nil
+    }
+}
+
+// MARK: - Subtest 执行
+
+extension TestSession {
+    /// runSubtest 主循环每次迭代的中间状态。
+    private struct SubtestState {
+        var phaseIDs: [UUID] = []
+        var subtestFailed: Bool = false
+        var failureReason: String?
+        var aborted: Bool = false
+        var stopped: Bool = false
+    }
+
+    /// 跑一个 Subtest：内部 phase / group 失败 → 短路剩余节点；subtest fail 不污染外层。
+    ///
+    /// 终态归约：
+    /// - 任一 phase outcome=.fail/.error → subtest .fail（reason 取该 phase 名 + 错误信息）
+    /// - 任一 phase subtestFailRequested=true → subtest .fail（reason 标 failSubtest）
+    /// - 嵌套 Group 失败 → subtest .fail（reason 取 Group 名）
+    /// - 嵌套 Subtest 失败 → **不** 让外层 subtest 失败（独立隔离）
+    /// - Task.isCancelled → subtest .error 并冒泡 aborted=true
+    /// - 内部 .stop → subtest 终态按已收集情况判定，并冒泡 stopped=true
+    private func runSubtest(
+        _ s: Subtest,
+        parentPath: [String],
+        into record: inout TestRecord,
+        context: TestContext
+    ) async -> GroupOutcome {
+        let startTime = Date()
+        if let runIf = s.runIf, await runIf(context) == false {
+            record.subtests.append(SubtestRecord(
+                id: s.id, name: s.name, outcome: .skip,
+                startTime: startTime, endTime: Date(),
+                phaseIDs: [], failureReason: "runIf=false"
+            ))
+            return GroupOutcome()
+        }
+
+        let path = parentPath + [s.name]
+        var state = SubtestState()
+
+        for node in s.nodes {
+            if Task.isCancelled { state.aborted = true; break }
+            if state.subtestFailed || state.stopped { break }
+            await handleSubtestNode(node, path: path, state: &state, into: &record, context: context)
+        }
+
+        let outcome: SubtestOutcome = state.aborted
+            ? .error
+            : (state.subtestFailed ? .fail : .pass)
+        record.subtests.append(SubtestRecord(
+            id: s.id, name: s.name, outcome: outcome,
+            startTime: startTime, endTime: Date(),
+            phaseIDs: state.phaseIDs, failureReason: state.failureReason
+        ))
+        return GroupOutcome(failed: false, aborted: state.aborted, stopped: state.stopped)
+    }
+
+    /// 派发一个 subtest 子节点（phase / group / subtest）。
+    private func handleSubtestNode(
+        _ node: PhaseNode,
+        path: [String],
+        state: inout SubtestState,
+        into record: inout TestRecord,
+        context: TestContext
+    ) async {
+        switch node {
+        case let .phase(phase):
+            await handleSubtestPhase(phase, path: path, state: &state, into: &record, context: context)
+        case let .group(g):
+            let nested = await runGroup(g, parentPath: path, into: &record, context: context)
+            if nested.aborted { state.aborted = true; return }
+            if nested.stopped { state.stopped = true; return }
+            if nested.failed {
+                state.subtestFailed = true
+                state.failureReason = "Group \(g.name) failed"
+            }
+        case let .subtest(inner):
+            let nested = await runSubtest(inner, parentPath: path, into: &record, context: context)
+            // 嵌套 subtest 是独立隔离单元，其失败不传染本 subtest
+            if nested.aborted { state.aborted = true; return }
+            if nested.stopped { state.stopped = true; return }
+        }
+    }
+
+    /// 在 subtest 内跑一个 phase；含 runIf 跳过 / stopRequested / failSubtest / fail/error 判定。
+    private func handleSubtestPhase(
+        _ phase: Phase,
+        path: [String],
+        state: inout SubtestState,
+        into record: inout TestRecord,
+        context: TestContext
+    ) async {
+        if let runIf = phase.runIf, await runIf(context) == false {
+            let skipRecord = makeSkipRecord(
+                name: phase.definition.name, groupPath: path, reason: "runIf=false"
+            )
+            record.phases.append(skipRecord)
+            state.phaseIDs.append(skipRecord.id)
+            emit(.phaseCompleted(skipRecord))
+            return
+        }
+        var phaseRecord = await runPhase(phase, context: context)
+        phaseRecord.groupPath = path
+        record.phases.append(phaseRecord)
+        state.phaseIDs.append(phaseRecord.id)
+        emit(.phaseCompleted(phaseRecord))
+        applyPhaseRecordToSubtestState(phaseRecord, state: &state)
+    }
+
+    /// 根据 phase 终态更新 subtest 中间状态。`.stop` / `.failSubtest` / `.fail` / `.error` 各自映射。
+    private func applyPhaseRecordToSubtestState(_ phaseRecord: PhaseRecord, state: inout SubtestState) {
+        if phaseRecord.stopRequested {
+            // .stop 在 subtest 内：subtest 算 fail（phase outcome=.error），但 stopped 冒泡，外层立即终止
+            state.stopped = true
+            state.subtestFailed = true
+            state.failureReason = "\(phaseRecord.name): STOP"
+            return
+        }
+        if phaseRecord.subtestFailRequested {
+            state.subtestFailed = true
+            state.failureReason = "\(phaseRecord.name): failSubtest"
+            return
+        }
+        if phaseRecord.outcome == .fail || phaseRecord.outcome == .error {
+            state.subtestFailed = true
+            let msg = phaseRecord.errorMessage ?? phaseRecord.outcome.rawValue
+            state.failureReason = "\(phaseRecord.name): \(msg)"
         }
     }
 }
