@@ -26,7 +26,7 @@ A modern Swift hardware-test framework inspired by [OpenHTF](https://github.com/
 - **`TestConfig`** — JSON loader, `ctx.config.string(...) / double(...) / value(_, as:)` inside phases. Zero external dependencies.
 - **Pluggable hardware (`Plug`)** — register with `init()` or a factory; declare `dependencies` and `PlugManager` topologically sorts setup, injecting ready plugs via `setup(resolver:)`.
 - **Plug placeholders (`bind` / `swap`)** — `executor.swap(RealPSU.self, with: MockPSU.self)` swaps a real plug with a mock; phase code keeps `ctx.getPlug(RealPSU.self)` unchanged.
-- **Operator interaction (`PromptPlug`)** — `await prompt.requestConfirm(...) / requestText(...) / requestChoice(...)` suspends inside a phase; UI subscribes via `events()` and replies with `resolve(...)`. Designed for SwiftUI sheets.
+- **Operator interaction (`PromptPlug`)** — `await prompt.requestConfirm(..., timeout: 30) / requestText(...) / requestChoice(...)` suspends inside a phase with optional per-call timeout; UI subscribes via `events()` and replies with `resolve(...)`. `resolutions()` stream notifies the UI when any request resolves (user answer / cancel / timeout) so SwiftUI sheets auto-dismiss. Designed for SwiftUI sheets.
 - **Multi-DUT concurrency (`TestSession`)** — one `TestExecutor` spawns multiple concurrent sessions; each owns its own plug instances and event stream. `executor.events()` is the aggregated stream.
 - **History persistence (`HistoryStore`)** — `InMemoryHistoryStore` / `JSONFileHistoryStore`; query by SN / planName / outcome / time window / limit. `HistoryOutputCallback` plugs in as an `OutputCallback` for automatic ingest.
 - **Continuous trigger loop (`TestLoop`)** — factory pattern: `trigger` returns a serial number to start one session, then waits again on completion; `states()` exposes a state stream for SwiftUI.
@@ -396,14 +396,31 @@ Aliases also participate in dependency topological sort: a plug that declares `d
 
 ### PromptPlug & SwiftUI integration
 
-Inside a phase, suspend until the operator answers:
+Inside a phase, suspend until the operator answers (with optional per-call timeout):
 
 ```swift
 Phase(name: "ScanSerial") { @MainActor ctx in
     let prompt = ctx.getPlug(PromptPlug.self)
+    // Without timeout: wait forever
     let sn = await prompt.requestText("Scan SN", placeholder: "SN-...")
-    ctx.serialNumber = sn          // back-fills into the record
+    ctx.serialNumber = sn
+
+    // With 30 s timeout: empty string on timeout (same as cancel)
+    let opOK = await prompt.requestConfirm("Fixture ready?", timeout: 30)
+    if !opOK { return .stop }
     return .continue
+}
+```
+
+`timeout: TimeInterval? = nil` is available on all three high-level APIs. To distinguish operator cancel from timeout, use the lower-level `request(kind:timeout:) -> PromptResponse`:
+
+```swift
+let response = await prompt.request(kind: .confirm(message: "OK?"), timeout: 5)
+switch response {
+case .confirm(let b):  ...
+case .cancelled:       ctx.logWarning("operator cancelled")
+case .timedOut:        ctx.logWarning("no response after 5 s")
+case .text, .choice:   break // shape mismatch
 }
 ```
 

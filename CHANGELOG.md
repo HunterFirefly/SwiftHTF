@@ -14,6 +14,17 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`PromptPlug` 单次超时**：`requestConfirm` / `requestText` / `requestChoice` /
+  底层 `request(kind:)` 全部接受可选 `timeout: TimeInterval?`（默认 nil = 永久等）。
+  - 高阶 API 超时映射为默认值（false / "" / -1），与 cancel 行为一致。
+  - 底层 `request(kind:timeout:) -> PromptResponse` 返回新增的
+    `.timedOut` case，可区分操作员取消（`.cancelled`）与未应答超时。
+- **`PromptPlug.resolutions() -> AsyncStream<UUID>`**：任意原因 resolve
+  （用户应答 / cancel / timeout）都会 yield 该 request.id，UI 据此撤回
+  正在显示的 sheet，避免僵尸 prompt。
+- **`PromptCoordinator` 自动撤回**：`attach(to:)` 内并发订阅 `events()` +
+  `resolutions()`，plug 端任意原因 resolve 后 `current` 自动清空。修复了
+  phase Task 取消 / 操作员未应答超时 时 sheet 不消失的旧问题。
 - **`Subtest` 节点**：与 `PhaseGroup` 平级的可隔离失败单元（对齐 OpenHTF `Subtest`
   语义）。
   - DSL：`Subtest("name") { Phase... Group... Subtest... }`，支持
@@ -39,6 +50,9 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `TestRecord` / `PhaseRecord` 使用显式 `Codable`，旧 JSON（不含
   `subtests` / `subtestFailRequested` / `stopRequested`）反序列化时自动
   填充默认值。
+- **(source-breaking)** `PromptResponse` 增加 `.timedOut` case：外部代码
+  若对 `PromptResponse` 做穷举 `switch` 会编译错；现有 `if case let
+  .confirm(b) = response` 模式自动落 else 分支，无影响。
 
 ## [0.1.1] - 2026-05-09
 

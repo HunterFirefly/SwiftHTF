@@ -52,6 +52,23 @@ final class PromptCoordinatorTests: XCTestCase {
         coord.detach()
     }
 
+    func testPlugTimeoutClearsCurrentSheet() async throws {
+        // 修僵尸 sheet：plug 端超时 resolve 后，coord.current 应被 resolutions() 流自动清空
+        let plug = PromptPlug()
+        let coord = PromptCoordinator()
+        await coord.attach(to: plug)
+
+        async let _: PromptResponse = plug.request(kind: .confirm(message: "x"), timeout: 0.1)
+        try await waitUntil { coord.current != nil }
+        XCTAssertNotNil(coord.current)
+
+        // 不应答，等超时触发
+        try await waitUntil { coord.current == nil }
+        XCTAssertNil(coord.current, "超时后 current 应被 resolutions 自动清空")
+
+        coord.detach()
+    }
+
     func testDetachStopsListening() async throws {
         let plug = PromptPlug()
         let coord = PromptCoordinator()

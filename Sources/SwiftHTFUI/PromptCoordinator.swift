@@ -24,24 +24,33 @@ public final class PromptCoordinator: ObservableObject {
 
     private weak var plug: PromptPlug?
     private var listener: Task<Void, Never>?
+    private var resolutionListener: Task<Void, Never>?
     private var detached: Bool = true
 
     public init() {}
 
-    /// 绑定到一个 PromptPlug 实例并开始消费请求。
-    /// 同一时刻只展示一个请求；下一条等当前 resolve 后才显示。
+    /// 绑定到一个 PromptPlug 实例并开始消费请求 + resolution 通知。
+    /// 同一时刻只展示一个请求；plug 端任意原因 resolve（用户应答 / cancel / timeout）后
+    /// `current` 会被自动清空，避免僵尸 sheet。
     public func attach(to plug: PromptPlug) async {
         detach()
         self.plug = plug
         detached = false
-        let stream = plug.events()
+        let requestStream = plug.events()
+        let resolutionStream = plug.resolutions()
         listener = Task { @MainActor [weak self] in
-            for await req in stream {
+            for await req in requestStream {
                 guard let self else { return }
-                // detach 后即便仍有缓冲事件，也不再写 current
                 if detached { continue }
                 // 简单策略：若当前已有 prompt，覆盖之
                 current = req
+            }
+        }
+        resolutionListener = Task { @MainActor [weak self] in
+            for await id in resolutionStream {
+                guard let self else { return }
+                if detached { continue }
+                if current?.id == id { current = nil }
             }
         }
     }
@@ -51,6 +60,8 @@ public final class PromptCoordinator: ObservableObject {
         detached = true
         listener?.cancel()
         listener = nil
+        resolutionListener?.cancel()
+        resolutionListener = nil
         current = nil
         plug = nil
     }
@@ -73,5 +84,6 @@ public final class PromptCoordinator: ObservableObject {
 
     deinit {
         listener?.cancel()
+        resolutionListener?.cancel()
     }
 }

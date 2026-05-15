@@ -26,7 +26,7 @@
 - **配置 `TestConfig`** —— JSON 加载，phase 内 `ctx.config.string(...) / double(...) / value(_, as:)` 读取，零外部依赖。
 - **可插拔硬件 (`Plug`)** —— 支持 `init()` 或工厂闭包注册；声明 `dependencies` 后 `PlugManager` 自动拓扑排序，`setup(resolver:)` 注入已就绪的依赖。
 - **Plug 替身 (`bind` / `swap`)** —— `executor.swap(RealPSU.self, with: MockPSU.self)` 把真实 plug 整组替换为 mock；phase 代码 `ctx.getPlug(RealPSU.self)` 不变。
-- **操作员交互 (`PromptPlug`)** —— phase 内 `await prompt.requestConfirm(...) / requestText(...) / requestChoice(...)` 挂起；UI 端用 `events()` 订阅 + `resolve(...)` 应答；面向 SwiftUI sheet 集成。
+- **操作员交互 (`PromptPlug`)** —— phase 内 `await prompt.requestConfirm(..., timeout: 30) / requestText(...) / requestChoice(...)` 挂起；可选单次超时；UI 端用 `events()` 订阅、`resolve(...)` 应答，再通过 `resolutions()` 信号流自动撤回 SwiftUI sheet（用户回应 / cancel / timeout 任一原因都会通知）。
 - **多 DUT 并发 (`TestSession`)** —— 一个 `TestExecutor` 可派生多个 session 同时运行，各自独立 plug 实例 + 独立事件流；`executor.events()` 是聚合流。
 - **历史持久化 (`HistoryStore`)** —— `InMemoryHistoryStore` / `JSONFileHistoryStore`，按 SN / planName / outcome / 时间窗口 / limit 查询；`HistoryOutputCallback` 可作为 `OutputCallback` 自动入库。
 - **连续触发循环 (`TestLoop`)** —— 工厂模式：`trigger` 闭包返回 SN 启动一次 session，结束后回到 trigger 等下一轮；`states()` 状态流方便 SwiftUI 驱动 UI。
@@ -396,14 +396,31 @@ API：
 
 ### PromptPlug & SwiftUI 集成
 
-phase 内挂起等待操作员：
+phase 内挂起等待操作员（可选超时）：
 
 ```swift
 Phase(name: "ScanSerial") { @MainActor ctx in
     let prompt = ctx.getPlug(PromptPlug.self)
+    // 不传 timeout：永久等
     let sn = await prompt.requestText("请扫码", placeholder: "SN-...")
-    ctx.serialNumber = sn          // 回灌进 record
+    ctx.serialNumber = sn
+
+    // 带 30s 超时：超时映射为默认值（false / "" / -1），与 cancel 一致
+    let opOK = await prompt.requestConfirm("治具就位？", timeout: 30)
+    if !opOK { return .stop }
     return .continue
+}
+```
+
+三个高阶 API 都带可选 `timeout: TimeInterval? = nil`。要区分"操作员取消"与"超时未应答"，用底层 `request(kind:timeout:) -> PromptResponse`：
+
+```swift
+let response = await prompt.request(kind: .confirm(message: "OK?"), timeout: 5)
+switch response {
+case .confirm(let b):  ...
+case .cancelled:       ctx.logWarning("操作员取消")
+case .timedOut:        ctx.logWarning("5 秒内未应答")
+case .text, .choice:   break // 类型不匹配
 }
 ```
 

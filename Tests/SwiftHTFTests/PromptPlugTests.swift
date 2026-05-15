@@ -229,6 +229,150 @@ final class PromptPlugTests: XCTestCase {
         XCTAssertEqual(record.outcome, .pass)
         XCTAssertEqual(record.phases.first?.measurements["operator_confirm"]?.value.asBool, true)
     }
+
+    // MARK: - 超时
+
+    func testTimeoutFiresAfterInterval() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let response = await prompt.request(kind: .confirm(message: "hang"), timeout: 0.1)
+        if case .timedOut = response {} else { XCTFail("expected .timedOut, got \(response)") }
+        XCTAssertTrue(prompt.pending.isEmpty, "超时后 pending 应清空")
+        drain.cancel()
+    }
+
+    func testTimeoutZeroReturnsImmediately() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let start = Date()
+        let response = await prompt.request(kind: .confirm(message: "now"), timeout: 0)
+        let elapsed = Date().timeIntervalSince(start)
+        if case .timedOut = response {} else { XCTFail("expected .timedOut") }
+        XCTAssertLessThan(elapsed, 0.1, "timeout=0 应立刻返回")
+        drain.cancel()
+    }
+
+    func testTimeoutNilWaitsForResolve() async {
+        // 不传 timeout，验证默认行为：永久等待。50ms 后主动 resolve 才返回。
+        let prompt = PromptPlug()
+        let stream = prompt.events()
+        let listener = Task { @MainActor [prompt] in
+            for await req in stream {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                prompt.resolve(id: req.id, response: .confirm(true))
+            }
+        }
+        let answer = await prompt.requestConfirm("永久等")
+        XCTAssertTrue(answer)
+        listener.cancel()
+    }
+
+    func testResolvedBeforeTimeoutWins() async {
+        let prompt = PromptPlug()
+        let stream = prompt.events()
+        let listener = Task { @MainActor [prompt] in
+            for await req in stream {
+                prompt.resolve(id: req.id, response: .confirm(true))
+            }
+        }
+        let response = await prompt.request(kind: .confirm(message: "fast"), timeout: 1.0)
+        if case let .confirm(b) = response {
+            XCTAssertTrue(b)
+        } else {
+            XCTFail("用户应答应胜出，得到 \(response)")
+        }
+        listener.cancel()
+    }
+
+    func testTaskCancelBeatsTimeout() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let phaseTask = Task { @MainActor [prompt] in
+            await prompt.request(kind: .confirm(message: "blocked"), timeout: 5.0)
+        }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        phaseTask.cancel()
+        let response = await phaseTask.value
+        if case .cancelled = response {} else { XCTFail("expected .cancelled, got \(response)") }
+        drain.cancel()
+    }
+
+    // MARK: - resolutions 流
+
+    func testResolutionsYieldsOnUserResolve() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let resolutionStream = prompt.resolutions()
+        let collector = Task { @MainActor () -> UUID? in
+            for await id in resolutionStream {
+                return id
+            }
+            return nil
+        }
+        async let answer = prompt.requestConfirm("x")
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        let reqID = prompt.pending.first?.id
+        if let reqID { prompt.resolve(id: reqID, response: .confirm(true)) }
+        _ = await answer
+        let yielded = await collector.value
+        XCTAssertEqual(yielded, reqID)
+        drain.cancel()
+    }
+
+    func testResolutionsYieldsOnCancel() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let resolutionStream = prompt.resolutions()
+        let collector = Task { @MainActor () -> UUID? in
+            for await id in resolutionStream {
+                return id
+            }
+            return nil
+        }
+        async let answer = prompt.requestConfirm("x")
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        let reqID = prompt.pending.first?.id
+        if let reqID { prompt.cancel(id: reqID) }
+        _ = await answer
+        let yielded = await collector.value
+        XCTAssertEqual(yielded, reqID)
+        drain.cancel()
+    }
+
+    func testResolutionsYieldsOnTimeout() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        let resolutionStream = prompt.resolutions()
+        let collector = Task { @MainActor () -> UUID? in
+            for await id in resolutionStream {
+                return id
+            }
+            return nil
+        }
+        // 起 request 后立刻读 pending 拿 id；race 时 timeout 必胜
+        async let answer: PromptResponse = prompt.request(kind: .confirm(message: "x"), timeout: 0.1)
+        try? await Task.sleep(nanoseconds: 30_000_000)
+        let reqID = prompt.pending.first?.id
+        _ = await answer
+        let yielded = await collector.value
+        XCTAssertEqual(yielded, reqID)
+        drain.cancel()
+    }
+
+    // MARK: - 高阶 API 超时映射
+
+    func testHighOrderAPITimeoutMaps() async {
+        let prompt = PromptPlug()
+        let drain = Task { for await _ in prompt.events() {} }
+        async let b = prompt.requestConfirm("a", timeout: 0.05)
+        async let s = prompt.requestText("b", placeholder: nil, timeout: 0.05)
+        async let i = prompt.requestChoice("c", options: ["x", "y"], timeout: 0.05)
+        let (bv, sv, iv) = await (b, s, i)
+        XCTAssertFalse(bv)
+        XCTAssertEqual(sv, "")
+        XCTAssertEqual(iv, -1)
+        drain.cancel()
+    }
 }
 
 // MARK: - 测试辅助
