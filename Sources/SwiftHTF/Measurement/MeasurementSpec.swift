@@ -45,19 +45,26 @@ public struct MeasurementSpec: Sendable {
     /// `true` 表示 phase 内未调用 `ctx.measure(name, ...)` 也不算 fail（OpenHTF `is_optional`）；
     /// 默认 `false`：声明即必需，缺测会让 phase outcome 降级为 `.fail`。
     public let isOptional: Bool
+    /// 可选 pre-validate 处理：在跑 validators 之前把原始值转换为物理量。
+    /// 配置后，harvest 用 transform 结果替换 `Measurement.value`，原值保留在
+    /// `Measurement.rawValue` 供 BI / 审计读取。
+    /// 对齐 OpenHTF `with_args(transform_fn=…)`，常用于单位换算（mV→V）/ ADC 线性化。
+    public let transform: (@Sendable (AnyCodableValue) -> AnyCodableValue)?
 
     public init(
         name: String,
         unit: String? = nil,
         description: String? = nil,
         validators: [any MeasurementValidator] = [],
-        isOptional: Bool = false
+        isOptional: Bool = false,
+        transform: (@Sendable (AnyCodableValue) -> AnyCodableValue)? = nil
     ) {
         self.name = name
         self.unit = unit
         self.description = description
         self.validators = validators
         self.isOptional = isOptional
+        self.transform = transform
     }
 
     /// 工厂入口
@@ -76,7 +83,8 @@ public struct MeasurementSpec: Sendable {
             unit: unit,
             description: description,
             validators: validators + [validator],
-            isOptional: isOptional
+            isOptional: isOptional,
+            transform: transform
         )
     }
 
@@ -87,7 +95,28 @@ public struct MeasurementSpec: Sendable {
             unit: unit,
             description: description,
             validators: validators,
-            isOptional: true
+            isOptional: true,
+            transform: transform
+        )
+    }
+
+    /// 配置 pre-validate 转换：把原始 ctx.measure 值映射成物理量后再跑 validator。
+    /// 多次调用：后者覆盖前者（保持调用链可读，不做隐式 compose）。
+    /// ```swift
+    /// .named("vcc", unit: "V")
+    ///     .transform { raw in .double((raw.asDouble ?? 0) / 1000) } // mV → V
+    ///     .inRange(3.0, 3.6)
+    /// ```
+    public func transform(
+        _ block: @escaping @Sendable (AnyCodableValue) -> AnyCodableValue
+    ) -> MeasurementSpec {
+        MeasurementSpec(
+            name: name,
+            unit: unit,
+            description: description,
+            validators: validators,
+            isOptional: isOptional,
+            transform: block
         )
     }
 

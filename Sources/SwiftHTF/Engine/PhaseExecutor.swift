@@ -242,7 +242,14 @@ public final class PhaseExecutor {
         for (name, m) in context.measurements {
             var updated = m
             if let spec = specsByName[name] {
-                let (v, messages) = spec.run(on: m.value)
+                // transform：保留原值到 rawValue，把转换结果写回 value 再跑 validator
+                if let transform = spec.transform {
+                    let raw = m.value
+                    let mapped = transform(raw)
+                    updated.rawValue = raw
+                    updated.value = mapped
+                }
+                let (v, messages) = spec.run(on: updated.value)
                 updated.validatorMessages = messages
                 applyMeasurementVerdict(name: name, verdict: v, messages: messages,
                                         updated: &updated, agg: &verdict)
