@@ -24,7 +24,7 @@ A modern Swift hardware-test framework inspired by [OpenHTF](https://github.com/
 - **Failure routing** — `failureExceptions` whitelist: thrown matching types map to `.fail` (test failure), others stay `.error` (program error).
 - **Attachments** — `ctx.attach(name:data:mimeType:)` / `attachFromFile(_:)`; auto base64 in JSON, summary in Console / CSV.
 - **Per-phase logger** — `ctx.logInfo / logWarning / logError(...)` writes to `PhaseRecord.logs: [LogEntry]` and broadcasts to the event stream in real time; on retry only the last attempt's logs survive.
-- **`TestConfig`** — JSON loader, `ctx.config.string(...) / double(...) / value(_, as:)` inside phases. Zero external dependencies.
+- **`TestConfig` multi-source loading** — JSON / YAML files (auto-detected by extension), environment variables (`TestConfig.from(environment:prefix:)`), command-line `--key value` / `--key=value` (`TestConfig.from(arguments:)`), chained via `.merging(_:)` for OpenHTF-style priority (defaults < file < env < CLI). Inside phases: `ctx.config.string(...) / double(...) / value(_, as:)`. Depends on Yams for YAML.
 - **Phase-shared state** — `ctx.state` is a session-level mutable dict (mirrors `TestConfig` API: `string` / `int` / `double` / `bool` / `value(_:as:)` + `set(_:_:)`). Pass intermediate values between phases without inventing a custom plug; not persisted to `TestRecord` (use `measure` for that).
 - **Pluggable hardware (`Plug`)** — register with `init()` or a factory; declare `dependencies` and `PlugManager` topologically sorts setup, injecting ready plugs via `setup(resolver:)`.
 - **Plug placeholders (`bind` / `swap`)** — `executor.swap(RealPSU.self, with: MockPSU.self)` swaps a real plug with a mock; phase code keeps `ctx.getPlug(RealPSU.self)` unchanged.

@@ -24,7 +24,7 @@
 - **异常分流** —— `failureExceptions` 白名单：抛指定类型→`.fail`（业务失败），其他→`.error`（程序错误）。
 - **附件 `attach`** —— phase 内 `ctx.attach(name:data:mimeType:)` / `attachFromFile(_:)`，自动 base64 进 JSON、Console / CSV 摘要。
 - **Phase 局部日志** —— `ctx.logInfo / logWarning / logError(...)` 写入 `PhaseRecord.logs: [LogEntry]` 同时实时广播到事件流；retry 时仅保留最后一次 attempt 的日志。
-- **配置 `TestConfig`** —— JSON 加载，phase 内 `ctx.config.string(...) / double(...) / value(_, as:)` 读取，零外部依赖。
+- **配置 `TestConfig` 多源加载** —— JSON / YAML 文件（按扩展名自动识别）、环境变量（`TestConfig.from(environment:prefix:)`）、命令行 `--key value` / `--key=value`（`TestConfig.from(arguments:)`），用 `.merging(_:)` 链式合并（OpenHTF 风格优先级：defaults < file < env < CLI）。phase 内 `ctx.config.string(...) / double(...) / value(_, as:)` 读取；YAML 依赖 Yams。
 - **Phase 间共享状态 `ctx.state`** —— session 级可变字典，API 镜像 `TestConfig`（`string` / `int` / `double` / `bool` / `value(_:as:)` + `set(_:_:)`）；phase 间传中间值用，不进 `TestRecord`（要持久化用 `measure`）。
 - **可插拔硬件 (`Plug`)** —— 支持 `init()` 或工厂闭包注册；声明 `dependencies` 后 `PlugManager` 自动拓扑排序，`setup(resolver:)` 注入已就绪的依赖。
 - **Plug 替身 (`bind` / `swap`)** —— `executor.swap(RealPSU.self, with: MockPSU.self)` 把真实 plug 整组替换为 mock；phase 代码 `ctx.getPlug(RealPSU.self)` 不变。

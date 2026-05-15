@@ -12,9 +12,13 @@ let package = Package(
         .executable(name: "SwiftHTFDemo", targets: ["SwiftHTFDemo"]),
         .executable(name: "SwiftHTFSwiftUIDemo", targets: ["SwiftHTFSwiftUIDemo"]),
     ],
+    dependencies: [
+        .package(url: "https://github.com/jpsim/Yams.git", from: "5.1.0"),
+    ],
     targets: [
         .target(
             name: "SwiftHTF",
+            dependencies: ["Yams"],
             swiftSettings: [
                 .enableExperimentalFeature("StrictConcurrency"),
             ]

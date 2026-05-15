@@ -121,4 +121,38 @@ public indirect enum AnyCodableValue: Sendable, Codable, Equatable {
         let decoder = JSONDecoder()
         return (try? decoder.decode(AnyCodableValue.self, from: data)) ?? .null
     }
+
+    /// 从 YAML 解析得到的 `Any` 值递归构造。Yams 返回原生 Swift 类型；
+    /// `NSNull` / `nil` → `.null`；嵌套 array / object 递归转换；其它类型回退 `.string(String(describing:))`。
+    public static func from(yamlValue value: Any?) -> AnyCodableValue {
+        guard let value else { return .null }
+        if value is NSNull { return .null }
+        // Bool 必须在 Int / Double 之前（NSNumber 桥接可能让 Bool 通过 Int cast）
+        if let b = value as? Bool, type(of: value) == Bool.self { return .bool(b) }
+        if let i = value as? Int { return .int(Int64(i)) }
+        if let i = value as? Int64 { return .int(i) }
+        if let d = value as? Double { return .double(d) }
+        if let s = value as? String { return .string(s) }
+        if let arr = value as? [Any] {
+            return .array(arr.map { from(yamlValue: $0) })
+        }
+        if let obj = value as? [String: Any] {
+            return .object(obj.mapValues { from(yamlValue: $0) })
+        }
+        // 兼容 Yams 在某些场景下返回 NSNumber 但桥接判定异常
+        if let b = value as? Bool { return .bool(b) }
+        return .string(String(describing: value))
+    }
+
+    /// 从字符串推断类型：`"true"/"false"` → bool，整数 → int，浮点 → double，否则 → string。
+    /// 用于 env / CLI 等只能拿到字符串的源。
+    public static func from(stringValue raw: String) -> AnyCodableValue {
+        let trimmed = raw.trimmingCharacters(in: .whitespaces)
+        let lower = trimmed.lowercased()
+        if lower == "true" { return .bool(true) }
+        if lower == "false" { return .bool(false) }
+        if let i = Int64(trimmed) { return .int(i) }
+        if let d = Double(trimmed) { return .double(d) }
+        return .string(raw)
+    }
 }

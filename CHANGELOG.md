@@ -14,6 +14,17 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`TestConfig` 多源加载**：与 OpenHTF `Configuration` 对齐的分层配置
+  - YAML 文件支持：`TestConfig.load(from: url)` 按扩展名自动识别
+    `.json` / `.yaml` / `.yml`；显式 `load(from: data, format: .yaml)`
+  - 环境变量：`TestConfig.from(environment:prefix:keyTransform:)`，默认
+    把 `SWIFTHTF_VCC_LOWER=3.0` 转为 `vcc.lower` key
+  - 命令行：`TestConfig.from(arguments:)` 支持 `--key value` / `--key=value` /
+    裸 flag（`--enable-x` → bool true）
+  - 合并：`a.merging(b)` 让 `b` 覆盖 `a`；典型链路
+    `defaults.merging(file).merging(env).merging(cli)`（CLI 最优先）
+  - 字符串类型推断：`true`/`false` → bool、整数 → int、浮点 → double、其它 → string
+- **新增依赖** Yams 5.1+（YAML 解析）
 - **`Checkpoint` 节点**：与 Phase / Group / Subtest 平级的流程汇合点
   （对齐 OpenHTF `Checkpoint`）。
   - DSL：`Checkpoint("Sanity")`，配 `continueOnFail: true` 模式典型用法
