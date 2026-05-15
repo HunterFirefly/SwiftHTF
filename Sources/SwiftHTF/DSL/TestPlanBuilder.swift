@@ -39,6 +39,10 @@ public enum TestPlanBuilder {
         [.subtest(subtest)]
     }
 
+    public static func buildExpression(_ checkpoint: Checkpoint) -> [PhaseNode] {
+        [.checkpoint(checkpoint)]
+    }
+
     public static func buildExpression(_ node: PhaseNode) -> [PhaseNode] {
         [node]
     }

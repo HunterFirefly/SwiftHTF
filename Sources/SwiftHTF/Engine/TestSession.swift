@@ -238,6 +238,13 @@ public actor TestSession {
             case let .subtest(s):
                 let nested = await runSubtest(s, parentPath: groupPath, into: &record, context: context)
                 shouldTerminate = mergeSubtestOutcome(nested, into: &outcome)
+            case let .checkpoint(cp):
+                // 检查本作用域内是否已 outcome.failed（嵌套 group 失败算，嵌套 subtest 失败被隔离不算）
+                let didFail = outcome.failed
+                let cpRecord = makeCheckpointRecord(cp, groupPath: groupPath, didFail: didFail)
+                record.phases.append(cpRecord)
+                emit(.phaseCompleted(cpRecord))
+                shouldTerminate = didFail
             }
             if shouldTerminate { return outcome }
         }
@@ -324,6 +331,17 @@ public actor TestSession {
         r.outcome = .skip
         r.errorMessage = reason
         r.endTime = r.startTime
+        return r
+    }
+
+    private func makeCheckpointRecord(_ cp: Checkpoint, groupPath: [String], didFail: Bool) -> PhaseRecord {
+        var r = PhaseRecord(name: cp.name)
+        r.groupPath = groupPath
+        r.outcome = didFail ? .fail : .pass
+        r.endTime = r.startTime
+        if didFail {
+            r.errorMessage = "Checkpoint failed: prior phase(s) failed in scope"
+        }
         return r
     }
 
@@ -497,6 +515,14 @@ extension TestSession {
             // 嵌套 subtest 是独立隔离单元，其失败不传染本 subtest
             if nested.aborted { state.aborted = true; return }
             if nested.stopped { state.stopped = true; return }
+        case let .checkpoint(cp):
+            // subtest 内的 checkpoint 看本 subtest 的 subtestFailed；不冒泡（与 Subtest 隔离一致）
+            let didFail = state.subtestFailed
+            let cpRecord = makeCheckpointRecord(cp, groupPath: path, didFail: didFail)
+            record.phases.append(cpRecord)
+            state.phaseIDs.append(cpRecord.id)
+            emit(.phaseCompleted(cpRecord))
+            // 失败时不需额外动作：state.subtestFailed 已为 true，下一轮 loop 自动 break
         }
     }
 

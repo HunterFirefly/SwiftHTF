@@ -1,19 +1,21 @@
 import Foundation
 
-/// 测试计划节点：单个 Phase、一个嵌套的 Group，或一个 Subtest。
+/// 测试计划节点：单个 Phase、一个嵌套的 Group、一个 Subtest，或一个 Checkpoint。
 ///
-/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` / `Subtest` 表达式包装，使用方很少直接构造。
+/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` / `Subtest` / `Checkpoint` 表达式包装，使用方很少直接构造。
 public enum PhaseNode: Sendable {
     case phase(Phase)
     indirect case group(Group)
     indirect case subtest(Subtest)
+    case checkpoint(Checkpoint)
 
-    /// 节点名（phase 名 / group 名 / subtest 名）
+    /// 节点名（phase 名 / group 名 / subtest 名 / checkpoint 名）
     public var name: String {
         switch self {
         case let .phase(p): p.definition.name
         case let .group(g): g.name
         case let .subtest(s): s.name
+        case let .checkpoint(c): c.name
         }
     }
 
@@ -30,6 +32,48 @@ public enum PhaseNode: Sendable {
     public var asSubtest: Subtest? {
         if case let .subtest(s) = self { return s }
         return nil
+    }
+
+    public var asCheckpoint: Checkpoint? {
+        if case let .checkpoint(c) = self { return c }
+        return nil
+    }
+}
+
+/// Checkpoint：测试流中的"汇合点"，扫描本作用域已收集的 phase outcomes 决定是否继续。
+///
+/// 应用场景：排错期"先标记不阻断"模式 —— 把若干 phase 都跑完拿数据，最后由
+/// checkpoint 决定本轮是否进入更耗时的 phase（FullSuite / Stress Test 等）。
+///
+/// 默认行为：
+/// - 失败定义：本作用域内任一已完成 phase outcome 为 `.fail` 或 `.error`
+/// - 失败时：写入 `PhaseRecord(name: checkpoint.name, outcome: .fail)`，短路剩余兄弟节点
+///   （Group 内：触发本 Group 短路 + 上传 outcome.failed；Subtest 内：仅触发 subtest 短路，不冒泡）
+/// - 通过时：写入 `PhaseRecord(name: checkpoint.name, outcome: .pass)`，继续
+///
+/// 作用域：仅看**本作用域**（顶层看顶层 phases；group 看本 group；subtest 看本 subtest），
+/// 嵌套 group / subtest 内部的失败不传染外层 checkpoint（与 Subtest 隔离语义一致）。
+///
+/// ```swift
+/// TestPlan(name: "DUT") {
+///     Phase(name: "Connect") { _ in .continue }
+///     Phase(name: "VccCheck") { _ in .failAndContinue }
+///     Checkpoint("Sanity")                            // 之前有 fail → 短路；写入 PhaseRecord(.fail)
+///     Phase(name: "FullSuite") { _ in .continue }     // 不会跑
+/// }
+/// ```
+public struct Checkpoint: Sendable, Identifiable {
+    public let id: UUID
+    public let name: String
+
+    public init(id: UUID = UUID(), name: String) {
+        self.id = id
+        self.name = name
+    }
+
+    /// 便捷构造：`Checkpoint("Sanity")`
+    public init(_ name: String) {
+        self.init(id: UUID(), name: name)
     }
 }
 

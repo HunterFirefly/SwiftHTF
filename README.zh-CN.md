@@ -14,6 +14,7 @@
 - **声明式测试计划** —— 用 `@resultBuilder` DSL 组合 `Phase`，原生支持 `if` / `for` / `#available` 分支。
 - **嵌套 PhaseGroup** —— `Group(name) { ... } setup: { ... } teardown: { ... }` 与 Phase 同级，可任意层级嵌套；group 内 `continueOnFail` 局部生效。
 - **Subtest（可隔离失败单元）** —— `Subtest("name") { ... }` 与 Phase / Group 同级。内部任一 phase 失败 / error / `.failSubtest` 短路剩余节点，但**不传播**到 `TestRecord.outcome`；单独写入 `SubtestRecord`（含 `phaseIDs` 反向引用），供 UI / 输出 sink 单独渲染。
+- **Checkpoint（流程汇合点）** —— `Checkpoint("name")` 与 Phase / Group / Subtest 同级。到达时扫描本作用域已收集的 phase outcomes，若有任一 `.fail` / `.error` 则写入 `PhaseRecord(outcome: .fail)` 并短路剩余兄弟节点（无视 `continueOnFail`）。适合"先把诊断 phase 都跑完拿数据，再决定是否进入耗时的压力测试"模式。作用域是本地的：顶层 checkpoint 只看顶层 phases，group / subtest 内的 checkpoint 只看本作用域。
 - **声明式 Measurement** —— 在 phase 上预声明 `MeasurementSpec`，链式追加 validator (`inRange` / `equals` / `matchesRegex` / `withinPercent` / `notEmpty` / `marginalRange` / `custom`)，运行后写回 `Measurement.outcome`。
 - **多维 Measurement (`SeriesMeasurement`)** —— `ctx.recordSeries("iv") { rec in ... }` 增量收集 IV / 扫频 / 扫温曲线；`SeriesMeasurementSpec` 支持 `lengthAtLeast` / `each` / `custom` 等校验。
 - **三态 outcome** —— `pass` / `marginalPass` / `fail` / `error` / `skip`，支持靠近边界但仍合格的"放行但需关注"语义。

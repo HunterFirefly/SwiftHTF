@@ -14,6 +14,16 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`Checkpoint` 节点**：与 Phase / Group / Subtest 平级的流程汇合点
+  （对齐 OpenHTF `Checkpoint`）。
+  - DSL：`Checkpoint("Sanity")`，配 `continueOnFail: true` 模式典型用法
+  - 到达时扫描**本作用域**已收集 phase outcomes，含 `.fail` / `.error`
+    则写入 `PhaseRecord(outcome: .fail)` 并短路剩余兄弟（无视 `continueOnFail`）
+  - 通过时写入 `PhaseRecord(outcome: .pass)`，继续执行
+  - 作用域语义：顶层 checkpoint 看顶层 phases；group 内 checkpoint 看
+    本 group；subtest 内 checkpoint 看本 subtest；嵌套 subtest 失败因隔离
+    不算外层 checkpoint 失败
+  - 适合"先把诊断 phase 都跑完拿数据，再决定是否进入耗时的压力测试"模式
 - **Phase 间共享状态 `ctx.state`**：session 级可变字典，phase 间传中间值用。
   - 类型 `PhaseState`：`@MainActor` class，API 镜像 `TestConfig`
     （`string` / `int` / `double` / `bool` / `value(_:as:)` + `set(_:_:)` +
