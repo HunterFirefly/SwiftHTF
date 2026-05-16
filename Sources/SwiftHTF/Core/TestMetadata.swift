@@ -13,17 +13,89 @@ public struct StationInfo: Sendable, Codable, Equatable {
     public var location: String?
     /// 测试机主机名 / IP
     public var hostName: String?
+    /// 当前测试进程 PID。`current(...)` 工厂自动填；`StationLock` 用它做"哪个进程占着"识别。
+    public var processID: Int32?
+    /// 主机启动时间（boot time）。`current(...)` 工厂自动填；与 PID 一起用可分辨
+    /// "PID 回环复用"（不同 boot 的同 PID 是不同进程）。
+    public var bootTime: Date?
 
     public init(
         stationId: String,
         stationName: String? = nil,
         location: String? = nil,
-        hostName: String? = nil
+        hostName: String? = nil,
+        processID: Int32? = nil,
+        bootTime: Date? = nil
     ) {
         self.stationId = stationId
         self.stationName = stationName
         self.location = location
         self.hostName = hostName
+        self.processID = processID
+        self.bootTime = bootTime
+    }
+
+    /// 显式 Codable：兼容旧 JSON 中无 `processID` / `bootTime` 字段。
+    private enum CodingKeys: String, CodingKey {
+        case stationId, stationName, location, hostName
+        case processID, bootTime
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        stationId = try c.decode(String.self, forKey: .stationId)
+        stationName = try c.decodeIfPresent(String.self, forKey: .stationName)
+        location = try c.decodeIfPresent(String.self, forKey: .location)
+        hostName = try c.decodeIfPresent(String.self, forKey: .hostName)
+        processID = try c.decodeIfPresent(Int32.self, forKey: .processID)
+        bootTime = try c.decodeIfPresent(Date.self, forKey: .bootTime)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(stationId, forKey: .stationId)
+        try c.encodeIfPresent(stationName, forKey: .stationName)
+        try c.encodeIfPresent(location, forKey: .location)
+        try c.encodeIfPresent(hostName, forKey: .hostName)
+        try c.encodeIfPresent(processID, forKey: .processID)
+        try c.encodeIfPresent(bootTime, forKey: .bootTime)
+    }
+
+    /// 工厂：自动填 hostName / processID / bootTime；适合下位机 CLI 启动时使用。
+    ///
+    /// - `hostName` 从 `ProcessInfo.processInfo.hostName`
+    /// - `processID` 从 `getpid()`
+    /// - `bootTime` 从 sysctl `kern.boottime`（Darwin），失败时为 nil
+    public static func current(
+        stationId: String,
+        stationName: String? = nil,
+        location: String? = nil
+    ) -> StationInfo {
+        StationInfo(
+            stationId: stationId,
+            stationName: stationName,
+            location: location,
+            hostName: ProcessInfo.processInfo.hostName,
+            processID: getpid(),
+            bootTime: SystemBootTime.current()
+        )
+    }
+}
+
+/// 主机启动时间（boot time）查询：用 sysctl `kern.boottime`。
+///
+/// 与 PID 一起组成对进程的强标识 —— 不同 boot 的同 PID 是不同进程，
+/// `StationLock` 因此能识别"持锁 PID 已死但 lock 文件残留"的 stale 情形。
+enum SystemBootTime {
+    /// 查询当前主机 boot time。Darwin / Linux 通用 sysctl；失败时返回 nil。
+    static func current() -> Date? {
+        var mib = [CTL_KERN, KERN_BOOTTIME]
+        var bootTimeVal = timeval()
+        var size = MemoryLayout<timeval>.size
+        let result = sysctl(&mib, 2, &bootTimeVal, &size, nil, 0)
+        guard result == 0 else { return nil }
+        let seconds = TimeInterval(bootTimeVal.tv_sec) + TimeInterval(bootTimeVal.tv_usec) / 1_000_000
+        return Date(timeIntervalSince1970: seconds)
     }
 }
 

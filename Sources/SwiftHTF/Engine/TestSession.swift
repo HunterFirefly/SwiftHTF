@@ -213,6 +213,17 @@ public actor TestSession {
                 record.phases.append(cpRecord)
                 emit(.phaseCompleted(cpRecord))
                 shouldTerminate = didFail
+            case let .dynamic(d):
+                let generated = await generateDynamic(d, groupPath: groupPath, into: &record, context: context)
+                if generated.isEmpty {
+                    shouldTerminate = false
+                } else {
+                    let nested = await runNodes(
+                        generated, groupPath: groupPath, continueOnFail: continueOnFail,
+                        into: &record, context: context
+                    )
+                    shouldTerminate = mergeNestedOutcome(nested, into: &outcome, continueOnFail: continueOnFail)
+                }
             }
             if shouldTerminate { return outcome }
         }
@@ -413,7 +424,7 @@ extension TestSession {
 
 extension TestSession {
     /// runSubtest 主循环每次迭代的中间状态。
-    private struct SubtestState {
+    struct SubtestState {
         var phaseIDs: [UUID] = []
         var subtestFailed: Bool = false
         var failureReason: String?
@@ -497,7 +508,14 @@ extension TestSession {
             record.phases.append(cpRecord)
             state.phaseIDs.append(cpRecord.id)
             emit(.phaseCompleted(cpRecord))
-            // 失败时不需额外动作：state.subtestFailed 已为 true，下一轮 loop 自动 break
+        // 失败时不需额外动作：state.subtestFailed 已为 true，下一轮 loop 自动 break
+        case let .dynamic(d):
+            let generated = await generateDynamicInSubtest(d, path: path, state: &state, into: &record, context: context)
+            for child in generated {
+                if Task.isCancelled { state.aborted = true; return }
+                if state.subtestFailed || state.stopped { return }
+                await handleSubtestNode(child, path: path, state: &state, into: &record, context: context)
+            }
         }
     }
 

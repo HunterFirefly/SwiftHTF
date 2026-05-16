@@ -12,7 +12,34 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-OpenHTF 对齐三连：phase 级 TIMEOUT outcome、全局 abort（含 SIGINT）、
+OpenHTF 对齐第二批：动态注入 phase（`DynamicPhases`）+ station identity / lock file。
+
+### Added
+
+- **`DynamicPhases`**：运行时由前一个 phase 决定后续节点的容器
+  - 作为 `PhaseNode.dynamic` case 与 `Phase / Group / Subtest / Checkpoint` 并列
+  - 闭包 `(TestContext) async throws -> [PhaseNode]` 在执行到本节点时调用，
+    生成的节点串入当前作用域剩余兄弟节点之前
+  - 继承当前 `groupPath`（顶层 / Group / Subtest 内表现一致）；可递归 fan-out
+  - 闭包抛错时不冒泡 record.outcome，写一条 `PhaseRecord(outcome: .error)` 占位
+- **`StationInfo.current(stationId:)` 工厂**：自动填 hostName / processID / bootTime
+  - `processID` 来自 `getpid()`；`bootTime` 来自 sysctl `kern.boottime`
+  - 旧 JSON 无新字段时反序列化为 nil（Codable backward-compat）
+- **`StationLock` actor**：工站级文件互斥锁
+  - `acquire(name:at:identity:)` 在 `<directory>/<name>.lock` 原子创建
+    （`Data.write(.withoutOverwriting)` 内部走 O_CREAT|O_EXCL）
+  - 冲突抛 `StationLockError.locked(by: StationInfo?)`，携带从 lock 文件读出
+    的持锁者 identity（含 PID / hostName / bootTime），便于判断 stale 残留
+  - `release()` 幂等；不做 stale detection（残留 lock 由调用方手工清理）
+  - 与 executor 解耦（独立 actor，调用方自己持有 / release）
+
+### Changed
+
+- `PhaseNode` 新增 `.dynamic` case；既有 switch 已补全（含 subtest 内派发）；
+  schema 导出阶段忽略 dynamic 节点（运行时才知道内容）
+- `StationInfo` 加 `processID / bootTime` 字段；显式 Codable 兼容旧 JSON
+
+OpenHTF 对齐第一批：phase 级 TIMEOUT outcome、全局 abort（含 SIGINT）、
 OutputToFile 文件名模板、DiagnoserTrigger 控制位。
 
 ### Added

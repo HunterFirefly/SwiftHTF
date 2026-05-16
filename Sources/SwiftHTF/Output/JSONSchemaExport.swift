@@ -79,7 +79,8 @@ private func collectPhaseArguments(
         for child in s.nodes {
             collectPhaseArguments(node: child, into: &accumulator)
         }
-    case .checkpoint:
+    case .checkpoint, .dynamic:
+        // dynamic 节点的内容只在运行时生成；schema 导出阶段不展开
         break
     }
 }
@@ -109,8 +110,9 @@ private func collectSchemaProperties(
         for child in s.nodes {
             collectSchemaProperties(node: child, into: &properties)
         }
-    case .checkpoint:
-        break // checkpoint 不持有 measurement spec
+    case .checkpoint, .dynamic:
+        // checkpoint 不持有 measurement spec；dynamic 在运行时才知道内容
+        break
     }
 }
 

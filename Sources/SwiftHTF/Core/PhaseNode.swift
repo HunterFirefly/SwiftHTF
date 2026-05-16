@@ -1,21 +1,25 @@
 import Foundation
 
-/// 测试计划节点：单个 Phase、一个嵌套的 Group、一个 Subtest，或一个 Checkpoint。
+/// 测试计划节点：单个 Phase、一个嵌套的 Group、一个 Subtest、Checkpoint，或 DynamicPhases。
 ///
-/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` / `Subtest` / `Checkpoint` 表达式包装，使用方很少直接构造。
+/// 通过 `@TestPlanBuilder` 自动从 `Phase` / `Group` / `Subtest` / `Checkpoint` /
+/// `DynamicPhases` 表达式包装，使用方很少直接构造。
 public enum PhaseNode: Sendable {
     case phase(Phase)
     indirect case group(Group)
     indirect case subtest(Subtest)
     case checkpoint(Checkpoint)
+    /// 运行时动态生成节点的容器；执行时调用闭包拿到 `[PhaseNode]` 串入剩余节点之前。
+    case dynamic(DynamicPhases)
 
-    /// 节点名（phase 名 / group 名 / subtest 名 / checkpoint 名）
+    /// 节点名（phase 名 / group 名 / subtest 名 / checkpoint 名 / dynamic 名）
     public var name: String {
         switch self {
         case let .phase(p): p.definition.name
         case let .group(g): g.name
         case let .subtest(s): s.name
         case let .checkpoint(c): c.name
+        case let .dynamic(d): d.name
         }
     }
 
@@ -36,6 +40,11 @@ public enum PhaseNode: Sendable {
 
     public var asCheckpoint: Checkpoint? {
         if case let .checkpoint(c) = self { return c }
+        return nil
+    }
+
+    public var asDynamic: DynamicPhases? {
+        if case let .dynamic(d) = self { return d }
         return nil
     }
 }

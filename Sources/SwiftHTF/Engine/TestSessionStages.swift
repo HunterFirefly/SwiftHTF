@@ -102,4 +102,56 @@ extension TestSession {
             }
         }
     }
+
+    // MARK: - DynamicPhases helper（顶层 / subtest 内共用）
+
+    /// 顶层 runNodes 内的 dynamic 节点：调闭包拿 [PhaseNode]；抛错时占位 .error
+    /// PhaseRecord 并返回空数组（由调用方决定是否继续）。
+    func generateDynamic(
+        _ d: DynamicPhases,
+        groupPath: [String],
+        into record: inout TestRecord,
+        context: TestContext
+    ) async -> [PhaseNode] {
+        do {
+            return try await d.generate(context)
+        } catch {
+            let placeholder = makeDynamicErrorRecord(name: d.name, groupPath: groupPath, error: error)
+            record.phases.append(placeholder)
+            emit(.phaseCompleted(placeholder))
+            return []
+        }
+    }
+
+    /// subtest 内的 dynamic 节点：抛错时占位写入 PhaseRecord 同时挂到 subtest phaseIDs；
+    /// 返回生成的节点供调用方递归执行。
+    func generateDynamicInSubtest(
+        _ d: DynamicPhases,
+        path: [String],
+        state: inout SubtestState,
+        into record: inout TestRecord,
+        context: TestContext
+    ) async -> [PhaseNode] {
+        do {
+            return try await d.generate(context)
+        } catch {
+            let placeholder = makeDynamicErrorRecord(name: d.name, groupPath: path, error: error)
+            record.phases.append(placeholder)
+            state.phaseIDs.append(placeholder.id)
+            emit(.phaseCompleted(placeholder))
+            return []
+        }
+    }
+
+    /// DynamicPhases 闭包抛错时写入的占位 PhaseRecord。
+    func makeDynamicErrorRecord(
+        name: String, groupPath: [String], error: Error
+    ) -> PhaseRecord {
+        var r = PhaseRecord(name: name)
+        r.groupPath = groupPath
+        r.outcome = .error
+        r.errorMessage = "DynamicPhases generator threw: \(error.localizedDescription)"
+        r.endTime = r.startTime
+        return r
+    }
 }
