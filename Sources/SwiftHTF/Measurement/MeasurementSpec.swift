@@ -40,6 +40,13 @@ public enum MeasurementValidationResult: Sendable, Equatable {
 public struct MeasurementSpec: Sendable {
     public let name: String
     public let unit: String?
+    /// 带物理维度的单位声明（OpenHTF `with_units(...)` 等价）。
+    ///
+    /// - 与 `unit: String?` 平行：`unitObject != nil` 时 `unit` 字段派生自 `unitObject.name`
+    /// - harvest 时若 measurement.unit 字符串在 `UnitRegistry.default` 能反查到 Unit，
+    ///   且该 Unit 的 dimension 与 `unitObject.dimension` 不符 → outcome=.fail
+    /// - measurement.unit 为 nil 或字符串不在 registry → 跳过维度校验（视为自定义单位）
+    public let unitObject: Unit?
     public let description: String?
     public let validators: [any MeasurementValidator]
     /// `true` 表示 phase 内未调用 `ctx.measure(name, ...)` 也不算 fail（OpenHTF `is_optional`）；
@@ -54,13 +61,16 @@ public struct MeasurementSpec: Sendable {
     public init(
         name: String,
         unit: String? = nil,
+        unitObject: Unit? = nil,
         description: String? = nil,
         validators: [any MeasurementValidator] = [],
         isOptional: Bool = false,
         transform: (@Sendable (AnyCodableValue) -> AnyCodableValue)? = nil
     ) {
         self.name = name
-        self.unit = unit
+        // unitObject 非 nil 时优先派生 unit name；显式 unit 参数仅在 unitObject=nil 时生效
+        self.unit = unitObject?.name ?? unit
+        self.unitObject = unitObject
         self.description = description
         self.validators = validators
         self.isOptional = isOptional
@@ -81,6 +91,7 @@ public struct MeasurementSpec: Sendable {
         MeasurementSpec(
             name: name,
             unit: unit,
+            unitObject: unitObject,
             description: description,
             validators: validators + [validator],
             isOptional: isOptional,
@@ -93,6 +104,7 @@ public struct MeasurementSpec: Sendable {
         MeasurementSpec(
             name: name,
             unit: unit,
+            unitObject: unitObject,
             description: description,
             validators: validators,
             isOptional: true,
@@ -113,10 +125,28 @@ public struct MeasurementSpec: Sendable {
         MeasurementSpec(
             name: name,
             unit: unit,
+            unitObject: unitObject,
             description: description,
             validators: validators,
             isOptional: isOptional,
             transform: block
+        )
+    }
+
+    /// 声明带维度的单位（OpenHTF `with_units(units.VOLT)` 等价）。
+    /// 设置后 `unit` 字段派生自 `Unit.name`；harvest 阶段对 measurement.unit 做维度校验。
+    /// ```swift
+    /// .named("vcc").units(.volt).inRange(3.0, 3.6)
+    /// ```
+    public func units(_ unit: Unit) -> MeasurementSpec {
+        MeasurementSpec(
+            name: name,
+            unit: nil,
+            unitObject: unit,
+            description: description,
+            validators: validators,
+            isOptional: isOptional,
+            transform: transform
         )
     }
 

@@ -12,6 +12,33 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+OpenHTF 对齐第三批：单位维度语义（pint 等价物的"用户侧 API"子集）。
+
+### Added
+
+- **`PhysicalDimension` 枚举**：电学（voltage / current / resistance / capacitance /
+  inductance / charge / conductance / magneticFlux / power / energy）+ 时频
+  （frequency / time）+ 温度 + 力学（length / mass / pressure / angle）+ 数据
+  （dataSize / dataRate）+ `.dimensionless` + `.custom(String)` 用户扩展
+- **`Unit` struct + 内置常量库**：`Unit.volt / .millivolt / .ampere / .hertz /
+  .ohm / .celsius / ...`，覆盖电子测试常用约 50 个单位
+- **`UnitRegistry`**：按字符串 name 反查 Unit；默认实例预注册所有内置常量；
+  `register(_:)` 可加入自定义单位
+- **`MeasurementSpec.units(_: Unit)`**：与 OpenHTF `with_units(units.VOLT)` 等价
+  - 声明带维度的单位；`spec.unit` 字段从 `unitObject.name` 派生
+  - harvest 时：`ctx.measure` 入参 unit 字符串经 registry 反查回 Unit，
+    若 dimension 与 spec 声明不符 → measurement outcome=.fail，
+    validatorMessages 前置 `unit_dimension: ...` 错误信息
+  - 跳过条件：未声明 `.units(_:)` / measurement 没传 unit / unit 字符串未注册
+    （视为自定义单位）
+
+### Changed
+
+- `MeasurementSpec` 新增 `unitObject: Unit?` 字段；现有 `unit: String?` 字段
+  在 `unitObject` 设置时自动派生自 `name`（兼容旧 API）
+
+## [Pre-Unreleased]
+
 OpenHTF 对齐第二批：动态注入 phase（`DynamicPhases`）+ station identity / lock file。
 
 ### Added

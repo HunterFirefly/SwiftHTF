@@ -241,9 +241,16 @@ public final class PhaseExecutor {
                     updated.rawValue = raw
                     updated.value = mapped
                 }
+                let dimensionMessage = checkUnitDimension(spec: spec, measurement: updated)
                 let (v, messages) = spec.run(on: updated.value)
-                updated.validatorMessages = messages
-                applyMeasurementVerdict(name: name, verdict: v, messages: messages,
+                var allMessages = messages
+                var verdictForCell = v
+                if let msg = dimensionMessage {
+                    allMessages.insert(msg, at: 0)
+                    verdictForCell = .fail
+                }
+                updated.validatorMessages = allMessages
+                applyMeasurementVerdict(name: name, verdict: verdictForCell, messages: allMessages,
                                         updated: &updated, agg: &verdict)
             }
             collected[name] = updated
@@ -414,5 +421,17 @@ extension PhaseExecutor {
     nonisolated func classifyTerminalError(_ error: Error, phase: Phase) -> PhaseOutcomeType {
         if case TestError.timeout = error { return .timeout }
         return isFailureException(error, phase: phase) ? .fail : .error
+    }
+
+    /// 维度校验：spec 声明 `.units(_:)` 时，把 measurement.unit 字符串在
+    /// `UnitRegistry.default` 反查回 Unit，比较维度。返回非 nil → 维度不符。
+    /// 跳过条件：spec 没声明 unitObject / measurement 没 unit 字符串 /
+    /// unit 字符串未注册（视为自定义单位，不强制校验）。
+    nonisolated func checkUnitDimension(spec: MeasurementSpec, measurement: Measurement) -> String? {
+        guard let specUnit = spec.unitObject else { return nil }
+        guard let measName = measurement.unit, !measName.isEmpty else { return nil }
+        guard let resolved = UnitRegistry.default.unit(named: measName) else { return nil }
+        if resolved.dimension == specUnit.dimension { return nil }
+        return "unit_dimension: expected \(specUnit.name) (\(specUnit.dimension)) got \(measName) (\(resolved.dimension))"
     }
 }
