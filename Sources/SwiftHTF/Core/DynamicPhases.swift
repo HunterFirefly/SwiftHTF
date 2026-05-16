@@ -63,7 +63,7 @@ public struct DynamicPhases: Sendable, Identifiable {
     }
 }
 
-// MARK: - DSL builder 兼容
+// MARK: - DSL builder 接入
 
 public extension TestPlanBuilder {
     static func buildExpression(_ dynamic: DynamicPhases) -> [PhaseNode] {

@@ -77,11 +77,6 @@ public struct TestConfig: Sendable {
         }
     }
 
-    /// 兼容旧 API：等价于 `load(from: data, format: .json)`
-    public static func load(from data: Data) throws -> TestConfig {
-        try load(from: data, format: .json)
-    }
-
     // MARK: - 取值
 
     public subscript(key: String) -> AnyCodableValue? {

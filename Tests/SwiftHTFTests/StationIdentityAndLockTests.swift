@@ -30,16 +30,7 @@ final class StationIdentityAndLockTests: XCTestCase {
         }
     }
 
-    // MARK: - StationInfo Codable 向后兼容（旧 JSON 无 processID/bootTime）
-
-    func testStationInfoLegacyJSONDecodesWithoutNewFields() throws {
-        let legacy = Data(#"{"stationId":"X","hostName":"old"}"#.utf8)
-        let info = try JSONDecoder().decode(StationInfo.self, from: legacy)
-        XCTAssertEqual(info.stationId, "X")
-        XCTAssertEqual(info.hostName, "old")
-        XCTAssertNil(info.processID)
-        XCTAssertNil(info.bootTime)
-    }
+    // MARK: - StationInfo Codable round trip
 
     func testStationInfoRoundTripWithNewFields() throws {
         let now = Date(timeIntervalSince1970: 1_700_000_000)

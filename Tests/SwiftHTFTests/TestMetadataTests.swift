@@ -78,7 +78,7 @@ final class TestMetadataTests: XCTestCase {
         XCTAssertEqual(record.dutInfo?.attributes["wafer"]?.asInt, 7)
     }
 
-    // MARK: - Codable 兼容旧 JSON
+    // MARK: - Codable round trip
 
     func testRoundTripWithAllMetadata() throws {
         var record = TestRecord(planName: "p", serialNumber: "SN-1")

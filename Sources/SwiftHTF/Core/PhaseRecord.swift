@@ -40,7 +40,6 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
     public var stopRequested: Bool
     /// 参数化 phase 的运行时参数快照（由 `Phase.withArgs(...)` 设定）。
     /// `ctx.args.string(...) / .double(...) / .value(_:as:)` 读取的同一份字典。
-    /// 旧 JSON 反序列化时缺字段则为空 dict。
     public var arguments: [String: AnyCodableValue]
 
     public init(name: String) {
@@ -59,53 +58,6 @@ public struct PhaseRecord: Sendable, Codable, Identifiable {
         subtestFailRequested = false
         stopRequested = false
         arguments = [:]
-    }
-
-    /// 显式 Codable：兼容旧 JSON 中无新增字段
-    private enum CodingKeys: String, CodingKey {
-        case id, name, startTime, endTime, outcome
-        case measurements, traces, attachments, errorMessage
-        case groupPath, diagnoses, logs
-        case subtestFailRequested, stopRequested
-        case arguments
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        name = try c.decode(String.self, forKey: .name)
-        startTime = try c.decode(Date.self, forKey: .startTime)
-        endTime = try c.decodeIfPresent(Date.self, forKey: .endTime)
-        outcome = try c.decode(PhaseOutcomeType.self, forKey: .outcome)
-        measurements = try c.decodeIfPresent([String: Measurement].self, forKey: .measurements) ?? [:]
-        traces = try c.decodeIfPresent([String: SeriesMeasurement].self, forKey: .traces) ?? [:]
-        attachments = try c.decodeIfPresent([Attachment].self, forKey: .attachments) ?? []
-        errorMessage = try c.decodeIfPresent(String.self, forKey: .errorMessage)
-        groupPath = try c.decodeIfPresent([String].self, forKey: .groupPath) ?? []
-        diagnoses = try c.decodeIfPresent([Diagnosis].self, forKey: .diagnoses) ?? []
-        logs = try c.decodeIfPresent([LogEntry].self, forKey: .logs) ?? []
-        subtestFailRequested = try c.decodeIfPresent(Bool.self, forKey: .subtestFailRequested) ?? false
-        stopRequested = try c.decodeIfPresent(Bool.self, forKey: .stopRequested) ?? false
-        arguments = try c.decodeIfPresent([String: AnyCodableValue].self, forKey: .arguments) ?? [:]
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(name, forKey: .name)
-        try c.encode(startTime, forKey: .startTime)
-        try c.encodeIfPresent(endTime, forKey: .endTime)
-        try c.encode(outcome, forKey: .outcome)
-        try c.encode(measurements, forKey: .measurements)
-        try c.encode(traces, forKey: .traces)
-        try c.encode(attachments, forKey: .attachments)
-        try c.encodeIfPresent(errorMessage, forKey: .errorMessage)
-        try c.encode(groupPath, forKey: .groupPath)
-        try c.encode(diagnoses, forKey: .diagnoses)
-        try c.encode(logs, forKey: .logs)
-        try c.encode(subtestFailRequested, forKey: .subtestFailRequested)
-        try c.encode(stopRequested, forKey: .stopRequested)
-        try c.encode(arguments, forKey: .arguments)
     }
 
     /// 阶段持续时间

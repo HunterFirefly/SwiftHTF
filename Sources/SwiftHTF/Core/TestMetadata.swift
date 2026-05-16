@@ -35,32 +35,6 @@ public struct StationInfo: Sendable, Codable, Equatable {
         self.bootTime = bootTime
     }
 
-    /// 显式 Codable：兼容旧 JSON 中无 `processID` / `bootTime` 字段。
-    private enum CodingKeys: String, CodingKey {
-        case stationId, stationName, location, hostName
-        case processID, bootTime
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        stationId = try c.decode(String.self, forKey: .stationId)
-        stationName = try c.decodeIfPresent(String.self, forKey: .stationName)
-        location = try c.decodeIfPresent(String.self, forKey: .location)
-        hostName = try c.decodeIfPresent(String.self, forKey: .hostName)
-        processID = try c.decodeIfPresent(Int32.self, forKey: .processID)
-        bootTime = try c.decodeIfPresent(Date.self, forKey: .bootTime)
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(stationId, forKey: .stationId)
-        try c.encodeIfPresent(stationName, forKey: .stationName)
-        try c.encodeIfPresent(location, forKey: .location)
-        try c.encodeIfPresent(hostName, forKey: .hostName)
-        try c.encodeIfPresent(processID, forKey: .processID)
-        try c.encodeIfPresent(bootTime, forKey: .bootTime)
-    }
-
     /// 工厂：自动填 hostName / processID / bootTime；适合下位机 CLI 启动时使用。
     ///
     /// - `hostName` 从 `ProcessInfo.processInfo.hostName`

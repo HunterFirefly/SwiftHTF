@@ -100,15 +100,15 @@ final class MultiSessionTests: XCTestCase {
         XCTAssertEqual(sn2, "B")
     }
 
-    func testExecuteIsBackwardCompatible() async {
-        // 旧 API：execute(serialNumber:) 仍然可用
-        let plan = TestPlan(name: "legacy") {
+    func testSyncExecuteReturnsRecord() async {
+        // 同步 API：execute(serialNumber:) 跑完直接拿 record，不需要管 session
+        let plan = TestPlan(name: "single") {
             Phase(name: "p") { _ in .continue }
         }
         let executor = TestExecutor(plan: plan)
-        let record = await executor.execute(serialNumber: "SN-OLD")
+        let record = await executor.execute(serialNumber: "SN-1")
         XCTAssertEqual(record.outcome, .pass)
-        XCTAssertEqual(record.serialNumber, "SN-OLD")
+        XCTAssertEqual(record.serialNumber, "SN-1")
     }
 
     func testCancelAllSessions() async {

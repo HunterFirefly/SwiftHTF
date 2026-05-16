@@ -91,7 +91,7 @@ public actor StationLock {
         directory.appendingPathComponent("\(name).lock")
     }
 
-    /// 读已存在 lock 的持锁者 identity；解析失败返回 nil（lock 文件可能由旧版本写入）。
+    /// 读已存在 lock 的持锁者 identity；解析失败返回 nil。
     private static func readHolder(at url: URL) -> StationInfo? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         let decoder = JSONDecoder()
@@ -114,7 +114,7 @@ public actor StationLock {
 /// 工站锁错误。
 public enum StationLockError: Error, LocalizedError {
     /// 锁已被其他进程持有。`by` 是从已存在 lock 文件读出的持锁者 identity；
-    /// nil 表示 lock 文件存在但解析失败（可能格式不兼容 / 损坏）。
+    /// nil 表示 lock 文件存在但解析失败（损坏 / 权限不足）。
     case locked(by: StationInfo?)
     /// 文件 IO 错误（创建目录 / open / write / 编码）。
     case ioFailure(String)

@@ -87,31 +87,6 @@ final class PhaseParameterizationTests: XCTestCase {
         XCTAssertEqual(decoded.phases[0].arguments["n"]?.asInt, 42)
     }
 
-    func testOldJSONWithoutArgumentsDecodesAsEmpty() throws {
-        // 不含 arguments 字段的旧 PhaseRecord JSON 应反序列化为空 dict
-        let id = UUID()
-        let start = Date()
-        let json = """
-        {
-            "id": "\(id.uuidString)",
-            "name": "Legacy",
-            "startTime": \(start.timeIntervalSinceReferenceDate),
-            "outcome": "PASS",
-            "measurements": {},
-            "traces": {},
-            "attachments": [],
-            "groupPath": [],
-            "diagnoses": [],
-            "logs": [],
-            "subtestFailRequested": false,
-            "stopRequested": false
-        }
-        """
-        let data = try XCTUnwrap(json.data(using: .utf8))
-        let decoded = try JSONDecoder().decode(PhaseRecord.self, from: data)
-        XCTAssertEqual(decoded.arguments, [:])
-    }
-
     // MARK: - Decodable struct 反序列化
 
     func testArgsValueAsDecodable() async {

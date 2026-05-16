@@ -15,7 +15,7 @@ final class TestConfigTests: XCTestCase {
             "enabled": true
         }
         """#
-        let cfg = try TestConfig.load(from: Data(json.utf8))
+        let cfg = try TestConfig.load(from: Data(json.utf8), format: .json)
         XCTAssertEqual(cfg.double("vcc.lower"), 3.0)
         XCTAssertEqual(cfg.double("vcc.upper"), 3.6)
         XCTAssertEqual(cfg.string("operator"), "alice")
@@ -25,7 +25,7 @@ final class TestConfigTests: XCTestCase {
 
     func testLoadRejectsNonObjectTopLevel() {
         let json = #"[1, 2, 3]"#
-        XCTAssertThrowsError(try TestConfig.load(from: Data(json.utf8)))
+        XCTAssertThrowsError(try TestConfig.load(from: Data(json.utf8), format: .json))
     }
 
     func testLoadFromFileURL() throws {
@@ -57,7 +57,7 @@ final class TestConfigTests: XCTestCase {
         let json = #"""
         { "vcc": { "lower": 3.0, "upper": 3.6 } }
         """#
-        let cfg = try TestConfig.load(from: Data(json.utf8))
+        let cfg = try TestConfig.load(from: Data(json.utf8), format: .json)
         let lim = cfg.value("vcc", as: Limits.self)
         XCTAssertEqual(lim, Limits(lower: 3.0, upper: 3.6))
     }
@@ -66,7 +66,7 @@ final class TestConfigTests: XCTestCase {
         let json = #"""
         { "modes": ["fast", "full"], "scores": [1, 2, 3] }
         """#
-        let cfg = try TestConfig.load(from: Data(json.utf8))
+        let cfg = try TestConfig.load(from: Data(json.utf8), format: .json)
         XCTAssertEqual(cfg.array("modes", as: { $0.asString }), ["fast", "full"])
         XCTAssertEqual(cfg.array("scores", as: { $0.asInt }), [1, 2, 3])
         XCTAssertNil(cfg.array("missing", as: { $0.asString }))

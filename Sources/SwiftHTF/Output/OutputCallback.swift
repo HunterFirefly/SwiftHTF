@@ -15,7 +15,9 @@ import Foundation
 ///     }
 ///  }
 /// let executor = TestExecutor(plan: plan, outputCallbacks: [
-///     ConsoleOutput(), JSONOutput(directory: dir), LinearUploader(endpoint: u),
+///     ConsoleOutput(),
+///     JSONOutput(directory: dir, filenameTemplate: OutputFilenameTemplate("{plan}_{serial}.json")),
+///     LinearUploader(endpoint: u),
 /// ])
 /// ```
 public protocol OutputCallback: Sendable {
@@ -121,7 +123,7 @@ public struct ConsoleOutput: OutputCallback {
 /// ```swift
 /// JSONOutput(
 ///     directory: dir,
-///     filenameTemplate: "{dut_id}.{start_time_millis}.json"
+///     filenameTemplate: OutputFilenameTemplate("{dut_id}.{start_time_millis}.json")
 /// )
 /// ```
 public struct OutputFilenameTemplate: Sendable {
@@ -129,12 +131,6 @@ public struct OutputFilenameTemplate: Sendable {
 
     public init(_ template: String) {
         self.template = template
-    }
-
-    /// 与历史 `JSONOutput` / `CSVOutput` 一致的旧默认：`{plan}_{serial}_{start_time_iso}.<ext>`。
-    /// 调用方需自行补扩展名。
-    public static func legacy(ext: String) -> OutputFilenameTemplate {
-        OutputFilenameTemplate("{plan}_{serial}_{start_time_iso}.\(ext)")
     }
 
     /// 把 token 按 record 字段渲染成文件名。未知 token 保留原样（不报错，便于扩展）。
@@ -169,11 +165,6 @@ public struct JSONOutput: OutputCallback {
     public let directory: URL
     public let filenameTemplate: OutputFilenameTemplate
 
-    /// 旧 API：保留默认文件名规则不变（兼容既有调用）。
-    public init(directory: URL) {
-        self.init(directory: directory, filenameTemplate: .legacy(ext: "json"))
-    }
-
     public init(directory: URL, filenameTemplate: OutputFilenameTemplate) {
         self.directory = directory
         self.filenameTemplate = filenameTemplate
@@ -195,11 +186,6 @@ public struct JSONOutput: OutputCallback {
             print("JSONOutput failed: \(error.localizedDescription)")
         }
     }
-
-    /// 旧 API 兼容（CSV 仍引用）：按"plan_serial_iso.<ext>"格式生成名字。
-    static func filename(for record: TestRecord, ext: String) -> String {
-        OutputFilenameTemplate.legacy(ext: ext).render(record: record)
-    }
 }
 
 // MARK: - CSV 输出
@@ -208,11 +194,6 @@ public struct JSONOutput: OutputCallback {
 public struct CSVOutput: OutputCallback {
     public let directory: URL
     public let filenameTemplate: OutputFilenameTemplate
-
-    /// 旧 API：保留默认文件名规则不变。
-    public init(directory: URL) {
-        self.init(directory: directory, filenameTemplate: .legacy(ext: "csv"))
-    }
 
     public init(directory: URL, filenameTemplate: OutputFilenameTemplate) {
         self.directory = directory

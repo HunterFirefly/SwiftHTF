@@ -29,14 +29,6 @@ final class OutputFilenameTemplateTests: XCTestCase {
         XCTAssertEqual(tpl.render(record: record), "p_{unknown}.dat")
     }
 
-    func testLegacyTemplateMatchesOldDefault() {
-        let record = TestRecord(planName: "Plan", serialNumber: "SN")
-        let tpl = OutputFilenameTemplate.legacy(ext: "json")
-        let rendered = tpl.render(record: record)
-        XCTAssertTrue(rendered.hasPrefix("Plan_SN_"), rendered)
-        XCTAssertTrue(rendered.hasSuffix(".json"), rendered)
-    }
-
     // MARK: - JSONOutput 写入磁盘走自定义模板
 
     func testJSONOutputWritesWithCustomTemplate() async throws {

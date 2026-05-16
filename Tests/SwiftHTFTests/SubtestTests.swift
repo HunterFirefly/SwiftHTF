@@ -208,39 +208,6 @@ final class SubtestTests: XCTestCase {
         XCTAssertEqual(decoded.phases.map(\.subtestFailRequested), record.phases.map(\.subtestFailRequested))
     }
 
-    func testLegacyJSONWithoutSubtestsDecodes() throws {
-        // 不含 subtests / subtestFailRequested 字段的旧 JSON 应该能解码
-        let legacy = Data("""
-        {
-          "id": "11111111-1111-1111-1111-111111111111",
-          "planName": "legacy",
-          "startTime": "2026-01-01T00:00:00Z",
-          "outcome": "PASS",
-          "phases": [
-            {
-              "id": "22222222-2222-2222-2222-222222222222",
-              "name": "p1",
-              "startTime": "2026-01-01T00:00:00Z",
-              "outcome": "PASS",
-              "measurements": {},
-              "traces": {},
-              "attachments": [],
-              "groupPath": [],
-              "diagnoses": [],
-              "logs": []
-            }
-          ],
-          "metadata": {}
-        }
-        """.utf8)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let record = try decoder.decode(TestRecord.self, from: legacy)
-        XCTAssertTrue(record.subtests.isEmpty)
-        XCTAssertEqual(record.phases.count, 1)
-        XCTAssertFalse(record.phases[0].subtestFailRequested)
-    }
-
     // MARK: - phaseID 链接
 
     func testSubtestPhaseIDsMatchRecordPhases() async throws {

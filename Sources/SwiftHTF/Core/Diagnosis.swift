@@ -38,9 +38,9 @@ public struct Diagnosis: Sendable, Codable, Identifiable {
 
 /// 诊断器触发时机控制。
 ///
-/// 各协议默认值贴近旧行为：
-/// - `PhaseDiagnoser` 默认 `.onlyOnFail`（旧实现就是仅在 phase 失败时跑）
-/// - `TestDiagnoser` 默认 `.always`（旧实现就是无条件跑，用户在闭包内 guard）
+/// 两个协议的默认值不同，对齐各自的最常见用法：
+/// - `PhaseDiagnoser` 默认 `.onlyOnFail`（用于失败归因，phase 通过时跑就是浪费）
+/// - `TestDiagnoser` 默认 `.always`（用于全局度量 / 报表，对每次测试都要跑一遍）
 public enum DiagnoserTrigger: String, Sendable, Codable {
     /// 总是触发（pass / marginalPass / skip 终态也跑），用于 metric / log 类诊断器。
     case always = "ALWAYS"
@@ -58,8 +58,7 @@ public protocol PhaseDiagnoser: Sendable {
     /// 用于调试 / 输出的简短标签（出现在 log / trace 中）。
     var label: String { get }
 
-    /// 触发时机；默认实现 `.onlyOnFail`，与既有行为兼容。
-    /// 详见 ``DiagnoserTrigger``。
+    /// 触发时机；默认 `.onlyOnFail`。详见 ``DiagnoserTrigger``。
     var trigger: DiagnoserTrigger { get }
 
     /// 跑诊断；返回的 ``Diagnosis`` 列表会追加到 `PhaseRecord.diagnoses`。
@@ -137,7 +136,7 @@ public protocol TestDiagnoser: Sendable {
 }
 
 public extension TestDiagnoser {
-    /// 默认 `.always` —— 与旧实现一致（无条件跑，由闭包自己 guard）。
+    /// 默认 `.always` —— 无条件跑，由闭包自己 guard。
     var trigger: DiagnoserTrigger {
         .always
     }

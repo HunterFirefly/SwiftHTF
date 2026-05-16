@@ -113,23 +113,6 @@ final class TestDiagnoserTests: XCTestCase {
         XCTAssertEqual(decoded.diagnoses[0].code, "CODEC")
     }
 
-    func testLegacyJSONWithoutDiagnosesDecodes() throws {
-        let legacy = Data("""
-        {
-          "id": "11111111-1111-1111-1111-111111111111",
-          "planName": "legacy",
-          "startTime": "2026-01-01T00:00:00Z",
-          "outcome": "PASS",
-          "phases": [],
-          "metadata": {}
-        }
-        """.utf8)
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        let record = try decoder.decode(TestRecord.self, from: legacy)
-        XCTAssertTrue(record.diagnoses.isEmpty)
-    }
-
     // MARK: - 与 PhaseDiagnoser 共存
 
     func testTestAndPhaseDiagnosersBothFire() async {

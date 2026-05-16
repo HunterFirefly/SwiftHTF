@@ -12,6 +12,37 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+清理跨版本兼容代码：移除"旧 JSON 反序列化"与"旧 API 重载"两类兼容路径，
+**保留** macOS 12 / iOS 15 系统旧版本兼容（CustomLineChart fallback、`@available(macOS 13)`
+重载、`MonitorScheduler` 双实现等）。
+
+### Removed
+
+- `TestRecord` / `PhaseRecord` / `StationInfo` / `Measurement` 的**显式 Codable**
+  实现（含 `CodingKeys` / `init(from:)` / `encode(to:)`）。改回 synthesized Codable：
+  旧 JSON（缺 subtests / diagnoses / stationInfo / traces / arguments / rawValue 等字段）
+  反序列化将直接抛 `DecodingError.keyNotFound`。
+- `OutputFilenameTemplate.legacy(ext:)` 静态便利方法
+- `JSONOutput.init(directory:)` / `CSVOutput.init(directory:)` 单参 init
+  —— 强制传 `filenameTemplate`
+- `JSONOutput.filename(for:ext:)` 内部静态辅助（已无引用）
+- `TestConfig.load(from: Data)` 单参兼容方法 —— 强制传 `format:` 参数
+- 兼容代码相关测试：
+  `SubtestTests.testLegacyJSONWithoutSubtestsDecodes`、
+  `TestDiagnoserTests.testLegacyJSONWithoutDiagnosesDecodes`、
+  `StationIdentityAndLockTests.testStationInfoLegacyJSONDecodesWithoutNewFields`、
+  `PhaseParameterizationTests.testOldJSONWithoutArgumentsDecodesAsEmpty`、
+  `OutputFilenameTemplateTests.testLegacyTemplateMatchesOldDefault`
+
+### Changed
+
+- 调用点：`Examples/SwiftHTFDemo/main.swift` 显式传 filenameTemplate；
+  `TestConfigTests` 改为传 `format: .json`
+- 注释：删除 Diagnosis trigger / StationLock readHolder / TestRecord / PhaseRecord
+  里的"旧实现 / 旧版本 / 兼容旧 JSON"措辞
+- `MultiSessionTests.testExecuteIsBackwardCompatible` 重命名为
+  `testSyncExecuteReturnsRecord`
+
 `SwiftHTFCharts`：新增可选 UI product，把 `SeriesMeasurement` 一行渲染成
 SwiftUI 折线图。零侵入 Core；不引此 product 的用户无任何依赖增加。
 

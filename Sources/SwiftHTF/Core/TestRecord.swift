@@ -71,10 +71,8 @@ public struct TestRecord: Sendable, Codable, Identifiable {
     public var outcome: TestOutcome
     public var phases: [PhaseRecord]
     /// Subtest 聚合记录（按执行顺序）。subtest 内 phase 仍存于 `phases`，本数组仅作为聚合层。
-    /// 旧 JSON 不含此字段时反序列化为空数组。
     public var subtests: [SubtestRecord]
     /// 测试级诊断结果（由 `TestPlan.diagnosers` 在测试收尾时产生）。
-    /// 旧 JSON 不含此字段时反序列化为空数组。
     public var diagnoses: [Diagnosis]
     /// 工站元数据（站标识 / 位置 / 主机名）。session 启动时注入，运行中不可变。
     public var stationInfo: StationInfo?
@@ -113,50 +111,5 @@ public struct TestRecord: Sendable, Codable, Identifiable {
     /// 失败的阶段列表（含 `.fail / .error / .timeout`）
     public var failedPhases: [PhaseRecord] {
         phases.filter(\.isFailing)
-    }
-
-    /// 显式 Codable：兼容旧 JSON 中无 subtests / diagnoses / stationInfo / dutInfo /
-    /// codeInfo / operatorName 字段
-    private enum CodingKeys: String, CodingKey {
-        case id, planName, serialNumber, startTime, endTime, outcome
-        case phases, subtests, diagnoses
-        case stationInfo, dutInfo, codeInfo, operatorName
-        case metadata
-    }
-
-    public init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        id = try c.decode(UUID.self, forKey: .id)
-        planName = try c.decode(String.self, forKey: .planName)
-        serialNumber = try c.decodeIfPresent(String.self, forKey: .serialNumber)
-        startTime = try c.decode(Date.self, forKey: .startTime)
-        endTime = try c.decodeIfPresent(Date.self, forKey: .endTime)
-        outcome = try c.decode(TestOutcome.self, forKey: .outcome)
-        phases = try c.decodeIfPresent([PhaseRecord].self, forKey: .phases) ?? []
-        subtests = try c.decodeIfPresent([SubtestRecord].self, forKey: .subtests) ?? []
-        diagnoses = try c.decodeIfPresent([Diagnosis].self, forKey: .diagnoses) ?? []
-        stationInfo = try c.decodeIfPresent(StationInfo.self, forKey: .stationInfo)
-        dutInfo = try c.decodeIfPresent(DUTInfo.self, forKey: .dutInfo)
-        codeInfo = try c.decodeIfPresent(CodeInfo.self, forKey: .codeInfo)
-        operatorName = try c.decodeIfPresent(String.self, forKey: .operatorName)
-        metadata = try c.decodeIfPresent([String: String].self, forKey: .metadata) ?? [:]
-    }
-
-    public func encode(to encoder: Encoder) throws {
-        var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(id, forKey: .id)
-        try c.encode(planName, forKey: .planName)
-        try c.encodeIfPresent(serialNumber, forKey: .serialNumber)
-        try c.encode(startTime, forKey: .startTime)
-        try c.encodeIfPresent(endTime, forKey: .endTime)
-        try c.encode(outcome, forKey: .outcome)
-        try c.encode(phases, forKey: .phases)
-        try c.encode(subtests, forKey: .subtests)
-        try c.encode(diagnoses, forKey: .diagnoses)
-        try c.encodeIfPresent(stationInfo, forKey: .stationInfo)
-        try c.encodeIfPresent(dutInfo, forKey: .dutInfo)
-        try c.encodeIfPresent(codeInfo, forKey: .codeInfo)
-        try c.encodeIfPresent(operatorName, forKey: .operatorName)
-        try c.encode(metadata, forKey: .metadata)
     }
 }

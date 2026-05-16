@@ -159,7 +159,7 @@ func run() async {
         "prompts.ready": "放好治具并按确认（来自 config）"
     }
     """#
-    let config = (try? TestConfig.load(from: Data(cfgJSON.utf8))) ?? TestConfig()
+    let config = (try? TestConfig.load(from: Data(cfgJSON.utf8), format: .json)) ?? TestConfig()
     let plan = makePlan(config: config)
 
     let outputDir = URL(fileURLWithPath: NSTemporaryDirectory())
@@ -169,8 +169,14 @@ func run() async {
         config: config,
         outputCallbacks: [
             ConsoleOutput(),
-            JSONOutput(directory: outputDir),
-            CSVOutput(directory: outputDir),
+            JSONOutput(
+                directory: outputDir,
+                filenameTemplate: OutputFilenameTemplate("{plan}_{serial}_{start_time_iso}.json")
+            ),
+            CSVOutput(
+                directory: outputDir,
+                filenameTemplate: OutputFilenameTemplate("{plan}_{serial}_{start_time_iso}.csv")
+            ),
         ]
     )
 
