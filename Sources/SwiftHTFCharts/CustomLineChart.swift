@@ -45,13 +45,12 @@ public struct CustomLineChart: View {
                 }
             }
             xAxisFooter(bounds: bounds)
-            if showLegend && groups.count > 1 {
+            if showLegend, groups.count > 1 {
                 legend(groups: groups)
             }
         }
     }
 
-    @ViewBuilder
     private func canvas(groups: [Group], bounds: Bounds, size: CGSize) -> some View {
         ZStack {
             gridBackground(size: size)
@@ -189,8 +188,13 @@ extension CustomLineChart {
         let xMax: Double
         let yMin: Double
         let yMax: Double
-        var xSpan: Double { xMax - xMin }
-        var ySpan: Double { yMax - yMin }
+        var xSpan: Double {
+            xMax - xMin
+        }
+
+        var ySpan: Double {
+            yMax - yMin
+        }
     }
 
     /// 按 `series` 标签把点列表拆成多组。无标签的点全部归入单一组（label = nil）。

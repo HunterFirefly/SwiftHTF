@@ -2,7 +2,7 @@ import Foundation
 import SwiftHTF
 import SwiftUI
 #if canImport(Charts)
-import Charts
+    import Charts
 #endif
 
 /// 把 `SeriesMeasurement` 一行渲染成折线图。
@@ -31,23 +31,32 @@ public struct SeriesChart: View {
 
     public init(trace: SeriesMeasurement) {
         self.trace = trace
-        self.specRange = nil
-        self.xLabelOverride = nil
-        self.yLabelOverride = nil
-        self.showLegend = true
+        specRange = nil
+        xLabelOverride = nil
+        yLabelOverride = nil
+        showLegend = true
     }
 
     public var body: some View {
         #if canImport(Charts)
-        if #available(macOS 13.0, iOS 16.0, *) {
-            AppleChartsBody(
-                trace: trace,
-                specRange: specRange,
-                xLabel: xLabel,
-                yLabel: yLabel,
-                showLegend: showLegend
-            )
-        } else {
+            if #available(macOS 13.0, iOS 16.0, *) {
+                AppleChartsBody(
+                    trace: trace,
+                    specRange: specRange,
+                    xLabel: xLabel,
+                    yLabel: yLabel,
+                    showLegend: showLegend
+                )
+            } else {
+                CustomLineChart(
+                    trace: trace,
+                    specRange: specRange,
+                    xLabel: xLabel,
+                    yLabel: yLabel,
+                    showLegend: showLegend
+                )
+            }
+        #else
             CustomLineChart(
                 trace: trace,
                 specRange: specRange,
@@ -55,15 +64,6 @@ public struct SeriesChart: View {
                 yLabel: yLabel,
                 showLegend: showLegend
             )
-        }
-        #else
-        CustomLineChart(
-            trace: trace,
-            specRange: specRange,
-            xLabel: xLabel,
-            yLabel: yLabel,
-            showLegend: showLegend
-        )
         #endif
     }
 
@@ -116,47 +116,47 @@ public extension SeriesChart {
 // MARK: - Apple Charts 实现（macOS 13+ / iOS 16+）
 
 #if canImport(Charts)
-@available(macOS 13.0, iOS 16.0, *)
-private struct AppleChartsBody: View {
-    let trace: SeriesMeasurement
-    let specRange: ClosedRange<Double>?
-    let xLabel: String
-    let yLabel: String
-    let showLegend: Bool
+    @available(macOS 13.0, iOS 16.0, *)
+    private struct AppleChartsBody: View {
+        let trace: SeriesMeasurement
+        let specRange: ClosedRange<Double>?
+        let xLabel: String
+        let yLabel: String
+        let showLegend: Bool
 
-    var body: some View {
-        let points = SeriesChartLayout.points(from: trace)
-        Chart {
-            ForEach(points) { p in
-                LineMark(
-                    x: .value(xLabel, p.x),
-                    y: .value(yLabel, p.y)
-                )
-                .foregroundStyle(by: .value("series", p.series ?? trace.value.name))
-                .interpolationMethod(.monotone)
+        var body: some View {
+            let points = SeriesChartLayout.points(from: trace)
+            Chart {
+                ForEach(points) { p in
+                    LineMark(
+                        x: .value(xLabel, p.x),
+                        y: .value(yLabel, p.y)
+                    )
+                    .foregroundStyle(by: .value("series", p.series ?? trace.value.name))
+                    .interpolationMethod(.monotone)
+                }
+                if let range = specRange {
+                    RuleMark(y: .value("lo", range.lowerBound))
+                        .foregroundStyle(traceColor.opacity(0.4))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                    RuleMark(y: .value("hi", range.upperBound))
+                        .foregroundStyle(traceColor.opacity(0.4))
+                        .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                }
             }
-            if let range = specRange {
-                RuleMark(y: .value("lo", range.lowerBound))
-                    .foregroundStyle(traceColor.opacity(0.4))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                RuleMark(y: .value("hi", range.upperBound))
-                    .foregroundStyle(traceColor.opacity(0.4))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            .chartXAxisLabel(xLabel)
+            .chartYAxisLabel(yLabel)
+            .chartLegend(showLegend && trace.dimensions.count >= 2 ? .visible : .hidden)
+            .chartForegroundStyleScale(range: [traceColor])
+        }
+
+        private var traceColor: Color {
+            switch trace.outcome {
+            case .pass: .green
+            case .marginalPass: .yellow
+            case .skip: .gray
+            case .fail, .error, .timeout: .red
             }
         }
-        .chartXAxisLabel(xLabel)
-        .chartYAxisLabel(yLabel)
-        .chartLegend(showLegend && trace.dimensions.count >= 2 ? .visible : .hidden)
-        .chartForegroundStyleScale(range: [traceColor])
     }
-
-    private var traceColor: Color {
-        switch trace.outcome {
-        case .pass: .green
-        case .marginalPass: .yellow
-        case .skip: .gray
-        case .fail, .error, .timeout: .red
-        }
-    }
-}
 #endif

@@ -34,5 +34,4 @@ public struct Measurement: Sendable, Codable {
         self.outcome = outcome
         self.validatorMessages = validatorMessages
     }
-
 }
