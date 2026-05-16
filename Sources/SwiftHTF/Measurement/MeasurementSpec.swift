@@ -77,7 +77,12 @@ public struct MeasurementSpec: Sendable {
         self.transform = transform
     }
 
-    /// 工厂入口
+    /// 工厂入口：起一条 spec 链，后续用 `.inRange / .units / .optional / ...` 装饰。
+    ///
+    /// - Parameters:
+    ///   - name: measurement 名（在 phase 内唯一）；`ctx.measure(name, ...)` 用同名匹配
+    ///   - unit: 字符串形式的单位；要做维度校验改用 ``MeasurementSpec/units(_:)``
+    ///   - description: 人读描述（导出到 JSON Schema / BI 看板）
     public static func named(
         _ name: String,
         unit: String? = nil,

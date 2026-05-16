@@ -1,10 +1,27 @@
 import Foundation
 
-/// 输出回调协议
+/// 输出回调协议：测试结束后写记录到外部 sink。
 ///
-/// 测试结束后由 `TestExecutor` 调用，可有多个回调并行实现（控制台、JSON、CSV、上传…）。
+/// `TestExecutor` 在 session 完成后串行调用每个 callback；多 sink 互不干扰，
+/// 一个失败不影响其他。框架内置 ``ConsoleOutput`` / ``JSONOutput`` / ``CSVOutput``，
+/// 自定义实现可上传到 HTTP / 数据库 / mfg_inspector 后端等。
+///
+/// ```swift
+/// struct LinearUploader: OutputCallback {
+///     let endpoint: URL
+///     func save(record: TestRecord) async {
+///         let data = try? JSONEncoder().encode(record)
+///         _ = try? await URLSession.shared.upload(for: ..., from: data ?? .init())
+///     }
+///  }
+/// let executor = TestExecutor(plan: plan, outputCallbacks: [
+///     ConsoleOutput(), JSONOutput(directory: dir), LinearUploader(endpoint: u),
+/// ])
+/// ```
 public protocol OutputCallback: Sendable {
-    /// 保存测试记录
+    /// 保存测试记录。
+    ///
+    /// - Parameter record: 完成态的 `TestRecord`（outcome 已定，所有 phase 已收尾）
     func save(record: TestRecord) async
 }
 

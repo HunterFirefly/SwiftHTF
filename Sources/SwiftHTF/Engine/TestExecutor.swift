@@ -31,6 +31,16 @@ public actor TestExecutor {
     private var activeSessions: [UUID: TestSession] = [:]
     private var continuations: [UUID: AsyncStream<TestEvent>.Continuation] = [:]
 
+    /// 初始化 executor。
+    ///
+    /// - Parameters:
+    ///   - plan: 要执行的测试计划
+    ///   - config: 静态配置（YAML / JSON / dict 来源都已规范化为 `TestConfig`）
+    ///   - configSchema: 可选 schema，存在时启用 `conf.declare` 风格的校验 + 默认值注入
+    ///   - outputCallbacks: 测试完成后跑的输出 sink（console / JSON / CSV / 自定义）
+    ///   - defaultMetadata: 站级 / 代码级长期固定元数据，每 session 默认继承
+    ///   - undeclaredKeyHandler: schema 启用且 strictness=.warn 时收到未声明 key 的回调；
+    ///     nil 时默认写一行到 stderr
     public init(
         plan: TestPlan,
         config: TestConfig = TestConfig(),
@@ -115,9 +125,17 @@ public actor TestExecutor {
 
     // MARK: - Session 派生
 
-    /// 创建一个新的测试会话；调用方拿到 session 后可订阅 events / 调 cancel / 等 record。
-    /// 每个 session 持有独立 plug 实例。
-    /// - Parameter metadata: per-session 元数据，非 nil 字段会覆盖 `defaultMetadata` 同名字段。
+    /// 派生一个新的测试会话；返回后调用方可订阅 ``TestSession/events()`` / 调
+    /// ``TestSession/cancel()`` / 等 ``TestSession/record()``。
+    ///
+    /// 每个 session 持有独立 plug 实例（factory 重新构造、独立 setUp / tearDown），互不干扰；
+    /// 注册的 plug 别名（`bind` / `swap`）会随每个 session 灌入对应 PlugManager。
+    ///
+    /// - Parameters:
+    ///   - serialNumber: DUT 序列号；phase 内可通过 `ctx.serialNumber` 读取并改写（扫码回填）
+    ///   - metadata: per-session 元数据，非 nil 字段覆盖 `defaultMetadata` 同名字段
+    /// - Returns: 已 start 的 `TestSession`；events 流已 attach，调用方紧接着 `events()`
+    ///   不会丢 `testStarted`
     public func startSession(
         serialNumber: String? = nil,
         metadata: SessionMetadata? = nil
@@ -150,7 +168,13 @@ public actor TestExecutor {
     }
 
     /// 单 DUT 便利入口：派生 session、等待 record，一次性返回。
-    /// 多 DUT 并发请改用 `startSession(serialNumber:metadata:)`。
+    ///
+    /// 多 DUT 并发改用 ``startSession(serialNumber:metadata:)``。
+    ///
+    /// - Parameters:
+    ///   - serialNumber: DUT 序列号
+    ///   - metadata: per-session 元数据
+    /// - Returns: 完成态的 `TestRecord`（含 outcome / phases / measurements / log）
     public func execute(
         serialNumber: String? = nil,
         metadata: SessionMetadata? = nil
@@ -159,7 +183,10 @@ public actor TestExecutor {
         return await session.record()
     }
 
-    /// 取消所有正在跑的 session（多 session 模式可单独 `session.cancel()`）
+    /// 取消所有正在跑的 session（多 session 模式可单独调 ``TestSession/cancel()``）。
+    ///
+    /// 与 ``AbortRegistry`` 配合：`executor.bindToAbortRegistry(...)` + Ctrl-C
+    /// 信号 handler 可让 SIGINT 触发全 executor 优雅停止。
     public func cancel() async {
         for s in activeSessions.values {
             await s.cancel()
@@ -212,7 +239,18 @@ public struct TestPlan: Sendable {
     /// 返回的 Diagnosis 追加到 `TestRecord.diagnoses`。
     public let diagnosers: [any TestDiagnoser]
 
-    /// 主初始化：直接用 PhaseNode 构造（含嵌套 Group）
+    /// 主初始化：直接用 PhaseNode 构造（含嵌套 Group / Subtest）。
+    ///
+    /// 常规用法通过 result builder `init(name:setup:teardown:...phases:)`
+    /// 构造，本 init 留给程序化拼装节点的场景。
+    ///
+    /// - Parameters:
+    ///   - name: 测试计划名（出现在 `TestRecord.planName` / 文件名模板 `{plan}` 等）
+    ///   - nodes: 主体节点序列（顶层）
+    ///   - setupNodes: 顶层 setup 节点；任一失败 → 跳过主体 + teardown
+    ///   - teardownNodes: 顶层 teardown 节点；总是跑（无视主体是否失败）
+    ///   - continueOnFail: 主体任一节点失败时是否继续跑后续兄弟
+    ///   - diagnosers: 测试级诊断器；test 终态确定后按 trigger 过滤触发
     public init(
         name: String,
         nodes: [PhaseNode],

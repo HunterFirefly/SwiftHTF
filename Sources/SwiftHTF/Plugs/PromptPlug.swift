@@ -164,7 +164,9 @@ public final class PromptPlug: PlugProtocol {
     // MARK: - 高阶 API（phase 侧）
 
     /// 请求确认（是 / 否）。被取消 / 超时 / 类型不匹配时返回 `false`。
-    /// - Parameter timeout: 超时秒数；nil 表示永久等待（默认）。
+    /// - Parameters:
+    ///   - message: 提示文本，显示给操作员
+    ///   - timeout: 超时秒数；nil 表示永久等待（默认）
     public func requestConfirm(_ message: String, timeout: TimeInterval? = nil) async -> Bool {
         let response = await request(kind: .confirm(message: message), timeout: timeout)
         if case let .confirm(b) = response { return b }

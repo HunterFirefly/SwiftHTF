@@ -37,6 +37,12 @@ public struct DynamicPhases: Sendable, Identifiable {
     public let name: String
     public let generate: Generator
 
+    /// 主初始化。
+    ///
+    /// - Parameters:
+    ///   - id: 唯一标识；不指定时自动生成 UUID
+    ///   - name: 容器名（用于 trace 日志 / 错误占位 PhaseRecord 的 name）
+    ///   - generate: 生成节点的异步闭包；可读 ctx 拿前一个 phase 的 state / measurement
     public init(
         id: UUID = UUID(),
         name: String,
@@ -48,6 +54,10 @@ public struct DynamicPhases: Sendable, Identifiable {
     }
 
     /// 便捷构造：`DynamicPhases("PerRail") { ctx in ... }`
+    ///
+    /// - Parameters:
+    ///   - name: 容器名
+    ///   - generate: 生成节点的异步闭包
     public init(_ name: String, _ generate: @escaping Generator) {
         self.init(name: name, generate)
     }

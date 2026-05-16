@@ -55,13 +55,23 @@ public enum DiagnoserTrigger: String, Sendable, Codable {
 /// 副作用会被合并进当前 phase 的 PhaseRecord（measurement 不再跑 spec
 /// validation，attachments 直接追加）。
 public protocol PhaseDiagnoser: Sendable {
-    /// 用于调试 / 输出的简短标签
+    /// 用于调试 / 输出的简短标签（出现在 log / trace 中）。
     var label: String { get }
 
     /// 触发时机；默认实现 `.onlyOnFail`，与既有行为兼容。
+    /// 详见 ``DiagnoserTrigger``。
     var trigger: DiagnoserTrigger { get }
 
-    /// 跑诊断；返回的 Diagnosis 列表会追加到 PhaseRecord.diagnoses。
+    /// 跑诊断；返回的 ``Diagnosis`` 列表会追加到 `PhaseRecord.diagnoses`。
+    ///
+    /// 隔离：`@MainActor`。可读 ctx 已收集的状态，也可通过 `ctx.attach / ctx.measure`
+    /// 写副作用 —— 这些副作用会被合并进当前 phase 的 PhaseRecord（measurement
+    /// 不再跑 spec validation，attachments 直接追加）。
+    ///
+    /// - Parameters:
+    ///   - record: phase 当前的 record 快照（在 diagnoser 调用前已收尾）
+    ///   - context: 当前 phase 的 TestContext
+    /// - Returns: 要追加到 record 的 Diagnosis 列表；空列表表示"无可上报"
     @MainActor
     func diagnose(record: PhaseRecord, context: TestContext) async -> [Diagnosis]
 }

@@ -104,11 +104,17 @@ public final class TestContext {
 
     // MARK: - 类型化测量
 
-    /// 记录一个类型化测量值
+    /// 记录一个类型化测量值。
+    ///
+    /// 在 phase 闭包内调用；harvest 阶段按 `phase.measurements` 中的同名 ``MeasurementSpec``
+    /// 跑 validator 链，写回三态 outcome。重复 measure 同名时**后写覆盖前写**。
+    ///
     /// - Parameters:
-    ///   - name: 测量名（在 phase 内唯一）
-    ///   - value: 任意 `Encodable` 值（Bool/Int/Double/String/嵌套结构）
-    ///   - unit: 单位（可选，例如 "V"、"mA"、"%"）
+    ///   - name: 测量名（在 phase 内唯一）；与 ``MeasurementSpec/named(_:unit:description:)``
+    ///     声明的同名 spec 对应
+    ///   - value: 任意 `Encodable` 值（`Bool / Int / Double / String / 嵌套结构`）
+    ///   - unit: 单位字符串（例如 `"V"` / `"mA"` / `"%"`）；spec 若声明了
+    ///     ``MeasurementSpec/units(_:)``，本字符串会被 ``UnitRegistry`` 反查后做维度校验
     public func measure(_ name: String, _ value: some Encodable, unit: String? = nil) {
         let coded = AnyCodableValue.from(value)
         measurements[name] = Measurement(

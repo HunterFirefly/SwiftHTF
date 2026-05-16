@@ -29,12 +29,19 @@ public actor StationLock {
     }
 
     /// 尝试获取 lock。
+    ///
+    /// 原子语义靠 `Data.write(.withoutOverwriting)` 底层的 `O_CREAT | O_EXCL`：
+    /// lock 文件已存在 → 立刻冲突，**不**做 stale detection。
+    ///
     /// - Parameters:
     ///   - name: lock 名（通常对应 stationId），会拼成 `<directory>/<name>.lock`
-    ///   - directory: lock 文件父目录；不存在则创建
-    ///   - identity: 持锁者的 StationInfo；写入 lock 文件供其他方查看
-    /// - Throws: `StationLockError.locked(by:)` 已有其他进程持锁；
-    ///           `StationLockError.ioFailure(_:)` IO 错误
+    ///   - directory: lock 文件父目录；不存在则按 `withIntermediateDirectories` 创建
+    ///   - identity: 持锁者的 ``StationInfo``；以 JSON 写入 lock 文件供 readHolder 查看
+    /// - Returns: 持锁的 `StationLock` actor；release 之前一直占用
+    /// - Throws:
+    ///   - ``StationLockError/locked(by:)`` 已有其他进程持锁；associated value 是从
+    ///     lock 文件反序列化出的 StationInfo（解析失败时为 nil）
+    ///   - ``StationLockError/ioFailure(_:)`` 创建目录 / encode / 写文件失败
     public static func acquire(
         name: String,
         at directory: URL,

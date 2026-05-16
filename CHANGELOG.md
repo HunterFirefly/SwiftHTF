@@ -12,6 +12,29 @@ format and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+DocC 文档：加 `swift-docc-plugin` 依赖 + `SwiftHTF.docc` catalog
+（landing page + Topics 分组 + Getting Started + Writing Phases 文章）+ 补
+10+ 个核心 public API 的标准 `- Parameters / Returns / Throws` 块。
+
+### Added
+
+- **`Package.swift`** 加 `swift-docc-plugin` 1.x 依赖
+- **`Sources/SwiftHTF/SwiftHTF.docc/`** 文档 catalog：
+  - `SwiftHTF.md` landing page + 11 个 Topics 分组（Core / Engine / Measurement /
+    Output / Plugs / Diagnostics / Concurrency / ...）
+  - `GettingStarted.md` 5 分钟跑通最小例子 + plug 注册 + SwiftUI 接入
+  - `WritingPhases.md` Phase 修饰符 / measurement 校验 / retry / timeout /
+    monitor / withArgs / DynamicPhases / 诊断器
+- 本地生成命令：`swift package generate-documentation --target SwiftHTF`，
+  输出 `.build/plugins/Swift-DocC/outputs/SwiftHTF.doccarchive`（macOS 双击 / Xcode 打开）
+
+### Changed
+
+- 补 `TestExecutor.init` / `startSession` / `execute` / `cancel`、`TestPlan.init`、
+  `Phase.init`、`MeasurementSpec.named`、`ctx.measure`、`OutputCallback.save`、
+  `PlugProtocol`、`DynamicPhases.init`、`PhaseDiagnoser.diagnose`、`StationLock.acquire`
+  的 DocC 标准 markdown 块（`- Parameters / Returns / Throws`）
+
 OpenHTF 对齐第三批：单位维度语义（pint 等价物的"用户侧 API"子集）。
 
 ### Added

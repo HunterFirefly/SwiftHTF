@@ -87,7 +87,26 @@ public struct Phase: Identifiable, Sendable {
         self.plugOverrides = plugOverrides
     }
 
-    /// 便捷初始化
+    /// 便捷初始化。
+    ///
+    /// 等价于先构造 `PhaseDefinition` 再传给主 init。`TestPlanBuilder` 内通常
+    /// 直接调本 init。
+    ///
+    /// - Parameters:
+    ///   - name: phase 名（出现在 `PhaseRecord.name` / 日志 / 文件名等）
+    ///   - timeout: phase 闭包最长允许耗时（秒）；超过抛 `TestError.timeout`
+    ///   - retryCount: 闭包抛错 / 返回 `.retry` 时额外尝试次数（默认 0 = 不重试）
+    ///   - measurements: 单点 measurement spec 列表；harvest 时按这些 spec 跑 validator
+    ///   - series: 多维 measurement (trace) spec 列表
+    ///   - runIf: 运行时条件门；返回 false 时整 phase outcome=.skip，不计 fail
+    ///   - repeatOnMeasurementFail: 闭包返回 `.continue` 但 measurement 校验失败时重跑次数
+    ///   - diagnosers: phase 级诊断器；按 ``DiagnoserTrigger`` 决定何时跑
+    ///   - failureExceptions: 异常类型白名单；命中此处的精确类型 → outcome=.fail，
+    ///     否则 .error；`TestError.timeout` 优先归 `.timeout` 不进这里
+    ///   - monitors: 周期采样 monitor 列表（与 phase 主体并发）；通常用 `.monitor(...)` 修饰符
+    ///   - arguments: 参数化运行时态；通常用 `.withArgs(...)` 修饰符
+    ///   - plugOverrides: plug 重定向表；通常用 `.withPlug(...)` 修饰符
+    ///   - execute: phase 主体闭包（`@MainActor` 隔离）
     public init(
         name: String,
         timeout: TimeInterval? = nil,
