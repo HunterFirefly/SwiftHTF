@@ -146,16 +146,12 @@ private struct PhaseRow: View {
                 MeasurementRow(name: entry.key, measurement: entry.value)
             }
             ForEach(phase.traces.sorted(by: { $0.key < $1.key }), id: \.key) { entry in
-                if #available(macOS 13, *) {
-                    DisclosureGroup {
-                        SeriesChart(trace: entry.value)
-                            .frame(height: 200)
-                            .padding(.leading, 16)
-                            .padding(.vertical, 4)
-                    } label: {
-                        TraceRow(name: entry.key, trace: entry.value)
-                    }
-                } else {
+                DisclosureGroup {
+                    SeriesChart(trace: entry.value)
+                        .frame(height: 200)
+                        .padding(.leading, 16)
+                        .padding(.vertical, 4)
+                } label: {
                     TraceRow(name: entry.key, trace: entry.value)
                 }
             }

@@ -20,8 +20,8 @@ import Charts
 ///     .xAxisLabel("VCC (V)")           // 可选：覆写自动轴 label
 /// ```
 ///
-/// 隔离：纯 SwiftUI 视图，可在任意 view body 中使用。要求 macOS 13+ / iOS 16+（Apple Charts）。
-@available(macOS 13.0, iOS 16.0, *)
+/// 系统兼容：macOS 13+ / iOS 16+ 走 Apple `Charts`（手势 / 自适应 tick）；
+/// macOS 12 / iOS 15 fallback 到 ``CustomLineChart`` 纯 SwiftUI 自绘。
 public struct SeriesChart: View {
     private let trace: SeriesMeasurement
     private var specRange: ClosedRange<Double>?
@@ -39,55 +39,33 @@ public struct SeriesChart: View {
 
     public var body: some View {
         #if canImport(Charts)
-        chartBody
+        if #available(macOS 13.0, iOS 16.0, *) {
+            AppleChartsBody(
+                trace: trace,
+                specRange: specRange,
+                xLabel: xLabel,
+                yLabel: yLabel,
+                showLegend: showLegend
+            )
+        } else {
+            CustomLineChart(
+                trace: trace,
+                specRange: specRange,
+                xLabel: xLabel,
+                yLabel: yLabel,
+                showLegend: showLegend
+            )
+        }
         #else
-        Text("Charts framework 不可用")
-            .foregroundColor(.secondary)
-            .font(.caption)
+        CustomLineChart(
+            trace: trace,
+            specRange: specRange,
+            xLabel: xLabel,
+            yLabel: yLabel,
+            showLegend: showLegend
+        )
         #endif
     }
-
-    #if canImport(Charts)
-    @ViewBuilder
-    private var chartBody: some View {
-        let points = SeriesChartLayout.points(from: trace)
-        Chart {
-            ForEach(points) { p in
-                LineMark(
-                    x: .value(xLabel, p.x),
-                    y: .value(yLabel, p.y)
-                )
-                .foregroundStyle(by: .value("series", p.series ?? defaultSeriesName))
-                .interpolationMethod(.monotone)
-            }
-            if let range = specRange {
-                RuleMark(y: .value("lo", range.lowerBound))
-                    .foregroundStyle(traceColor.opacity(0.4))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-                RuleMark(y: .value("hi", range.upperBound))
-                    .foregroundStyle(traceColor.opacity(0.4))
-                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
-            }
-        }
-        .chartXAxisLabel(xLabel)
-        .chartYAxisLabel(yLabel)
-        .chartLegend(showLegend && trace.dimensions.count >= 2 ? .visible : .hidden)
-        .chartForegroundStyleScale(range: [traceColor])
-    }
-
-    private var defaultSeriesName: String {
-        trace.value.name
-    }
-
-    private var traceColor: Color {
-        switch trace.outcome {
-        case .pass: .green
-        case .marginalPass: .yellow
-        case .skip: .gray
-        case .fail, .error, .timeout: .red
-        }
-    }
-    #endif
 
     private var xLabel: String {
         if let custom = xLabelOverride { return custom }
@@ -105,7 +83,6 @@ public struct SeriesChart: View {
 
 // MARK: - Modifiers
 
-@available(macOS 13.0, iOS 16.0, *)
 public extension SeriesChart {
     /// 画一条上下限范围带（虚线 RuleMark）。常用于把 `MeasurementSpec.inRange(lo, hi)` 投影到图上。
     func specRange(_ range: ClosedRange<Double>) -> SeriesChart {
@@ -135,3 +112,51 @@ public extension SeriesChart {
         return copy
     }
 }
+
+// MARK: - Apple Charts 实现（macOS 13+ / iOS 16+）
+
+#if canImport(Charts)
+@available(macOS 13.0, iOS 16.0, *)
+private struct AppleChartsBody: View {
+    let trace: SeriesMeasurement
+    let specRange: ClosedRange<Double>?
+    let xLabel: String
+    let yLabel: String
+    let showLegend: Bool
+
+    var body: some View {
+        let points = SeriesChartLayout.points(from: trace)
+        Chart {
+            ForEach(points) { p in
+                LineMark(
+                    x: .value(xLabel, p.x),
+                    y: .value(yLabel, p.y)
+                )
+                .foregroundStyle(by: .value("series", p.series ?? trace.value.name))
+                .interpolationMethod(.monotone)
+            }
+            if let range = specRange {
+                RuleMark(y: .value("lo", range.lowerBound))
+                    .foregroundStyle(traceColor.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+                RuleMark(y: .value("hi", range.upperBound))
+                    .foregroundStyle(traceColor.opacity(0.4))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 3]))
+            }
+        }
+        .chartXAxisLabel(xLabel)
+        .chartYAxisLabel(yLabel)
+        .chartLegend(showLegend && trace.dimensions.count >= 2 ? .visible : .hidden)
+        .chartForegroundStyleScale(range: [traceColor])
+    }
+
+    private var traceColor: Color {
+        switch trace.outcome {
+        case .pass: .green
+        case .marginalPass: .yellow
+        case .skip: .gray
+        case .fail, .error, .timeout: .red
+        }
+    }
+}
+#endif
